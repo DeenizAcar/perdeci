@@ -56,7 +56,7 @@
         <div class="detail-title"><div class="eyebrow">Kişi · ${hs.length} eve bağlı</div><h1>${esc(p.name)}</h1>
           <div class="detail-meta">${p.phone ? `<span>${I('phone', 15)} ${esc(p.phone)}</span>` : ''}${p.email ? `<span>${I('mail', 15)} ${esc(p.email)}</span>` : ''}<span>${I('calendar', 15)} Kayıt ${U.date(p.createdAt)}</span></div></div>
         <div class="detail-actions"><button class="btn" data-act="personForm" data-id="${id}">${I('edit', 16)} Düzenle</button><button class="btn" data-act="smsForm" data-person="${id}">${I('message', 16)} SMS</button><button class="btn primary" data-act="linkForm" data-person="${id}">${I('link', 16)} Eve Bağla</button></div></div>
-      <div class="stat-strip"><div><span>Bağlı ev</span><strong>${hs.length}</strong></div><div><span>Teslim yetkisi</span><strong>${hs.filter((h) => h.canPickup).length} evde</strong></div><div><span>Teslim aldığı</span><strong>${st.received}</strong></div><div><span>Dükkana getirdiği</span><strong>${st.handed}</strong></div><div><span>Fatura sahibi olduğu ev</span><strong>${hs.filter((h) => h.isPrimary).length}</strong></div><div><span>Açık bakiye</span><strong class="${st.balance ? 'warn' : ''}">${st.balance ? money(st.balance) : '—'}</strong></div></div>
+      <div class="stat-strip"><div><span>Bağlı ev</span><strong>${hs.length}</strong></div><div><span>Teslim yetkisi</span><strong>${hs.filter((h) => h.canPickup).length} evde</strong></div><div><span>Teslim aldığı</span><strong>${st.received}</strong></div><div><span>Onayladığı sipariş</span><strong>${st.ordered}</strong></div><div><span>Fatura sahibi olduğu ev</span><strong>${hs.filter((h) => h.isPrimary).length}</strong></div><div><span>Açık bakiye</span><strong class="${st.balance ? 'warn' : ''}">${st.balance ? money(st.balance) : '—'}</strong></div></div>
       <div class="split">
         <div class="stack">
           <div class="section-title" style="margin-top:0"><h2>Bağlı evler</h2></div>
@@ -83,11 +83,11 @@
 
   /* ---------- SİPARİŞLER ---------- */
   V.ordersTable = function (orders, opt = {}) {
-    return `<table class="tbl"><thead><tr><th>Sipariş</th>${opt.house !== false ? '<th>Ev</th>' : ''}<th>Alım</th><th class="num">Parça</th><th>Durum</th><th>Teslim</th><th class="num">Tutar</th><th class="num">Bakiye</th></tr></thead><tbody>
+    return `<table class="tbl"><thead><tr><th>Sipariş</th>${opt.house !== false ? '<th>Ev</th>' : ''}<th>Tarih</th><th class="num">Parça</th><th>Durum</th><th>Teslim</th><th class="num">Tutar</th><th class="num">Bakiye</th></tr></thead><tbody>
       ${orders.map((o) => { const t = S.totals(o); return `<tr class="link" data-href="#/siparis/${o.id}">
-        <td><strong class="mono">${esc(o.code)}</strong><br><small class="faint">${esc(C.PICKUP[o.pickupMethod])}</small></td>
+        <td><strong class="mono">${esc(o.code)}</strong><br><small class="faint">${esc(C.DELIVERY[o.deliveryMethod])}</small></td>
         ${opt.house !== false ? `<td><div class="cell-main"><span class="sw-dot" style="width:10px;height:10px;border-radius:3px;background:${S.house(o.houseId)?.color}"></span><strong style="font-weight:600">${esc(houseName(o.houseId))}</strong></div></td>` : ''}
-        <td class="nowrap">${U.date(o.pickupAt)}</td><td class="num">${o.items.length}</td><td>${UI.status(o.status, true)}</td>
+        <td class="nowrap">${U.date(o.createdAt)}</td><td class="num">${o.items.length}</td><td>${UI.status(o.status, true)}</td>
         <td class="nowrap">${o.deliveredAt ? `${U.date(o.deliveredAt)}<br><small class="faint">${esc(o.deliveredToName || '')}</small>` : o.status === 'iptal' ? '—' : `<span class="${U.dayDiff(o.dueAt) < 0 ? '' : 'faint'}" style="${U.dayDiff(o.dueAt) < 0 ? 'color:var(--danger);font-weight:600' : ''}">Plan: ${U.date(o.dueAt)}</span>`}</td>
         <td class="num">${money(t.total)}</td><td class="num" style="${t.balance ? 'color:var(--danger);font-weight:600' : ''}">${t.balance ? money(t.balance) : '—'}</td></tr>`; }).join('')}</tbody></table>`;
   };
@@ -95,15 +95,18 @@
   V.kcard = function (o) {
     const h = S.house(o.houseId);
     const t = S.totals(o);
-    const dd = U.dayDiff(o.status === 'planlandi' ? o.pickupAt : o.dueAt);
-    const dueCls = o.status === 'teslim' ? '' : dd < 0 ? 'late' : dd === 0 ? 'today' : '';
-    const dueTxt = o.status === 'teslim' ? `${U.rel(o.deliveredAt)}` : o.status === 'planlandi' ? `Alım ${U.dueLabel(o.pickupAt).toLowerCase()}` : U.dueLabel(o.dueAt);
+    const isMeasure = o.status === 'olcu' && o.measureAt;
+    const isQuote = o.status === 'teklif';
+    const quoteAt = isQuote ? ([...o.history].reverse().find((x) => x.status === 'teklif')?.at || o.createdAt) : null;
+    const dd = U.dayDiff(isMeasure ? o.measureAt : o.dueAt);
+    const dueCls = o.status === 'teslim' || isQuote ? '' : dd < 0 ? 'late' : dd === 0 ? 'today' : '';
+    const dueTxt = o.status === 'teslim' ? `${U.rel(o.deliveredAt)}` : isMeasure ? `Ölçü ${U.dueLabel(o.measureAt).toLowerCase()} ${U.time(o.measureAt)}` : isQuote ? `Teklif ${U.rel(quoteAt)}` : U.dueLabel(o.dueAt);
     const colors = [...new Set(o.items.map((i) => S.curtain(i.curtainId)?.color).filter(Boolean))].slice(0, 8);
     const st = C.ST[o.status];
     return `<div class="kcard" draggable="${o.status !== 'teslim'}" data-order="${o.id}">
       <div class="kcard-top"><span class="kcard-code">${esc(o.code)}</span><span class="due ${dueCls}">${I('clock', 12)} ${dueTxt}</span></div>
       <h4>${esc(h?.title || '—')}</h4>
-      <div class="kc-meta"><span>${I('pin', 12)} ${esc(h?.district || '')}</span><span>${o.items.length} parça</span><span data-tip="${esc(C.PICKUP[o.pickupMethod] + ' → ' + C.DELIVERY[o.deliveryMethod])}">${I(o.deliveryMethod === 'dukkan' ? 'store' : 'truck', 12)}</span>${t.balance && o.status === 'teslim' ? `<span style="color:var(--danger)">${money(t.balance)} bakiye</span>` : ''}</div>
+      <div class="kc-meta"><span>${I('pin', 12)} ${esc(h?.district || '')}</span><span>${o.items.length} parça</span><span data-tip="${esc(C.MEASURE[o.measureMethod] + ' → ' + C.DELIVERY[o.deliveryMethod])}">${I(o.deliveryMethod === 'dukkan' ? 'store' : o.deliveryMethod === 'montaj' ? 'sparkles' : 'truck', 12)}</span>${t.balance && o.status === 'teslim' ? `<span style="color:var(--danger)">${money(t.balance)} bakiye</span>` : ''}</div>
       <div class="sw-strip">${colors.map((c) => `<i style="--sw:${c}"></i>`).join('')}</div>
       <div class="kc-foot">${o.status === 'teslim' ? `<span class="faint" style="font-size:12px">${I('user', 12)} ${esc(U.firstName(o.deliveredToName))}</span>` : UI.avatars(S.authorized(o.houseId).map((m) => m.person), 3, 22)}<span class="grow"></span><strong>${money(t.total)}</strong>
         ${st.action ? (o.status === 'hazir' ? `<a class="btn sm soft" href="#/teslimat?siparis=${o.id}" data-tip="Teslimat masasında aç">${I('check', 13)}</a>` : `<button class="btn sm soft" data-act="advance" data-id="${o.id}" data-tip="${esc(st.action)}">${I('arrow-right', 13)}</button>`) : ''}</div></div>`;
@@ -113,7 +116,7 @@
     const q = U.qs();
     const view = q.gorunum === 'liste' ? 'liste' : 'pano';
     const html = `
-      <div class="page-head"><div><h1>Siparişler</h1><p>Alımdan teslime kadar tüm yıkama işleri. Kartları sürükleyerek aşamalar arasında taşıyabilirsiniz.</p></div>
+      <div class="page-head"><div><h1>Siparişler</h1><p>Ölçüden montaja kadar tüm satışlar. Kartları sürükleyerek aşamalar arasında taşıyabilirsiniz.</p></div>
         <div class="actions"><div class="seg"><button data-v="pano" class="${view === 'pano' ? 'on' : ''}">${I('kanban', 15)} Pano</button><button data-v="liste" class="${view === 'liste' ? 'on' : ''}">${I('list', 15)} Liste</button></div><button class="btn primary" data-act="newOrder">${I('plus', 16)} Yeni Sipariş</button></div></div>
       <div class="toolbar">
         <div class="input-wrap">${I('search', 16, 'input-ic')}<input class="input has-ic" id="oq" placeholder="Sipariş kodu, ev adı veya kişi ara…" value="${esc(q.q || '')}"></div>
@@ -168,6 +171,7 @@
             const o = S.order(id); const to = col.dataset.col;
             if (!o || o.status === to) return;
             if (to === 'teslim') { location.hash = '#/teslimat?siparis=' + id; return; }
+            if (to === 'tedarik' && o.status === 'teklif') { A.approveForm({ id }); return; }
             S.setStatus(id, to);
             UI.toast(`${o.code} → ${C.ST[to].label}`, 'ok');
             if (to === 'hazir') A.smsToast(o);
@@ -199,22 +203,22 @@
     const html = `
       <div class="detail-head" style="--hc:${st.color}">
         <div class="detail-icon">${I(st.icon, 28)}</div>
-        <div class="detail-title"><div class="eyebrow">Yıkama siparişi · ${U.dt(o.createdAt)}</div><h1><span class="mono">${esc(o.code)}</span> ${UI.status(o.status)}</h1>
-          <div class="detail-meta"><span>${UI.houseIcon(h?.type, 15)} <a href="#/ev/${o.houseId}">${esc(houseName(o.houseId))}</a></span><span>${I('truck', 15)} ${esc(C.PICKUP[o.pickupMethod])}</span><span>${I('package', 15)} ${esc(C.DELIVERY[o.deliveryMethod])}</span><span>${I('curtain', 15)} ${o.items.length} parça</span></div></div>
+        <div class="detail-title"><div class="eyebrow">Perde siparişi · ${U.dt(o.createdAt)}</div><h1><span class="mono">${esc(o.code)}</span> ${UI.status(o.status)}</h1>
+          <div class="detail-meta"><span>${UI.houseIcon(h?.type, 15)} <a href="#/ev/${o.houseId}">${esc(houseName(o.houseId))}</a></span><span>${I('ruler', 15)} ${esc(C.MEASURE[o.measureMethod] || '')}</span><span>${I(o.deliveryMethod === 'montaj' ? 'sparkles' : 'package', 15)} ${esc(C.DELIVERY[o.deliveryMethod])}</span><span>${I('curtain', 15)} ${o.items.length} parça</span></div></div>
         <div class="detail-actions">
-          ${t.balance > 0 ? `<button class="btn" data-act="paymentForm" data-id="${id}">${I('wallet', 16)} Ödeme Al</button>` : ''}
-          <button class="btn" data-act="printReceipt" data-id="${id}">${I('printer', 16)} Fiş</button>
+          ${t.balance > 0 && o.status !== 'olcu' ? `<button class="btn" data-act="paymentForm" data-id="${id}">${I('wallet', 16)} Ödeme Al</button>` : ''}
+          <button class="btn" data-act="printReceipt" data-id="${id}">${I('printer', 16)} ${['olcu', 'teklif'].includes(o.status) ? 'Teklif' : 'Fiş'}</button>
           ${o.status === 'hazir' ? `<a class="btn primary" href="#/teslimat?siparis=${id}">${I('check', 16)} Teslim Et</a>` : st.action ? `<button class="btn primary" data-act="advance" data-id="${id}">${I(C.ST[next].icon, 16)} ${st.action}</button>` : ''}
         </div></div>
       <div class="card pad" style="margin-bottom:18px">${UI.stepper(o)}</div>
       <div class="split">
         <div class="stack">
-          <div class="card"><div class="card-head"><h3>Perdeler ve hizmetler</h3><p>${Object.keys(byRoom).length} oda · ${num(sum(o.items, (i) => (S.curtain(i.curtainId) ? C.area(S.curtain(i.curtainId)) : 0)), 1)} m² kumaş</p>${C.ACTIVE.includes(o.status) && o.status !== 'hazir' ? `<div class="actions"><button class="btn sm ghost" data-act="editOrderItems" data-id="${id}">${I('edit', 14)} Düzenle</button></div>` : ''}</div>
-            <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Perde</th><th>Konum</th><th class="num">Alan</th><th>Hizmet</th><th class="num">Ücret</th></tr></thead><tbody>
-              ${Object.values(byRoom).map((g) => g.items.map(({ it, curtain: c, facade: f, room: r }) => c ? `<tr class="link" data-href="#/perde/${c.id}"><td><div class="cell-main">${Viz.swatch(c, 32)}<div><strong>${esc(c.type)}</strong><small>${esc(c.code)} · ${esc(c.colorName)}</small></div></div></td><td>${esc(r?.name || '')}<br><small class="faint">${esc(f?.name || '')}</small></td><td class="num">${num(C.area(c), 1)} m²</td><td>Yıkama & ütü${it.services.length ? `<br><small style="color:var(--accent)">+ ${it.services.map((s) => esc(C.SERVICES[s])).join(', ')}</small>` : ''}</td><td class="num">${money(it.price)}</td></tr>` : `<tr><td colspan="5" class="faint">Silinmiş perde · ${money(it.price)}</td></tr>`).join('')).join('')}
+          <div class="card"><div class="card-head"><h3>Perdeler ve kalemler</h3><p>${Object.keys(byRoom).length} oda · ${num(sum(o.items, (i) => (S.curtain(i.curtainId) ? C.fabricMeters(S.curtain(i.curtainId)) : 0)), 1)} m pileli kumaş</p>${['olcu', 'teklif'].includes(o.status) ? `<div class="actions"><button class="btn sm ghost" data-act="editOrderItems" data-id="${id}">${I('edit', 14)} Düzenle</button></div>` : ''}</div>
+            <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Perde</th><th>Konum</th><th>Ölçü</th><th>Kalemler</th><th class="num">Tutar</th></tr></thead><tbody>
+              ${Object.values(byRoom).map((g) => g.items.map(({ it, curtain: c, facade: f, room: r }) => c ? `<tr class="link" data-href="#/perde/${c.id}"><td><div class="cell-main">${Viz.swatch(c, 32)}<div><strong>${esc(c.type)} · ${esc(c.fabric)}</strong><small>${esc(c.code)} · ${esc(c.colorName)}</small></div></div></td><td>${esc(r?.name || '')}<br><small class="faint">${esc(f?.name || '')}</small></td><td class="nowrap">${UI.dim(c)}<br><small class="faint">${C.CURTAIN_TYPES[c.type].flat ? num(C.flatArea(c), 1) + ' m²' : num(C.fabricMeters(c), 1) + ' m kumaş · 1:' + String(c.pleat).replace('.', ',')}</small></td><td>${C.CURTAIN_TYPES[c.type].flat ? 'Perde + mekanizma' : 'Kumaş + dikim'} <span class="faint">${money(it.basePrice ?? it.price)}</span>${it.services.length ? `<br><small style="color:var(--accent)">+ ${it.services.map((s) => esc(C.SERVICES[s])).join(', ')} ${money(it.servicePrice || 0)}</small>` : ''}</td><td class="num">${money(it.price)}</td></tr>` : `<tr><td colspan="5" class="faint">Silinmiş perde · ${money(it.price)}</td></tr>`).join('')).join('')}
             </tbody></table></div>
             <div class="card-body" style="border-top:1px solid var(--border)">
-              ${UI.kv('Perde yıkama', money(t.items))}${(o.fees || []).map((f) => UI.kv(esc(f.label), money(f.amount))).join('')}${t.discount ? UI.kv('İndirim', `<span style="color:var(--ok)">−${money(t.discount)}</span>`) : ''}
+              ${UI.kv('Perdeler', money(t.items))}${(o.fees || []).map((f) => UI.kv(esc(f.label), money(f.amount))).join('')}${t.discount ? UI.kv('İndirim', `<span style="color:var(--ok)">−${money(t.discount)}</span>`) : ''}
               ${UI.kv('<strong>Genel toplam</strong>', `<strong style="font-size:17px">${money(t.total)}</strong>`)}${UI.kv('Ödenen', money(t.paid))}${UI.kv('<strong>Kalan</strong>', `<strong style="${t.balance ? 'color:var(--danger)' : 'color:var(--ok)'}">${t.balance ? money(t.balance) : 'Ödendi'}</strong>`)}
             </div>
             ${o.payments.length ? `<div class="card-body" style="border-top:1px solid var(--border)"><div class="faint" style="font-size:12px;margin-bottom:6px;font-weight:600">ÖDEMELER</div>${o.payments.map((p) => UI.kv(`${U.dt(p.at)} · ${esc(p.method)}${p.note ? ' · ' + esc(p.note) : ''}`, money(p.amount), 'wallet')).join('')}</div>` : ''}
@@ -224,9 +228,11 @@
         <div class="stack">
           <div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Teslimat</h3>
             ${UI.kv('Teslim kodu', `<span class="mono" id="dcode" style="letter-spacing:.2em">••••</span> <button class="btn-icon sm ghost" data-act="revealCode" data-code="${esc(o.deliveryCode)}" data-tip="Kodu göster">${I('eye', 15)}</button>`, 'key')}
-            ${UI.kv(o.status === 'planlandi' ? 'Alım randevusu' : 'Teslim alındı', U.dt(o.status === 'planlandi' ? o.pickupAt : (o.history.find((x) => x.status === 'atolyede')?.at || o.pickupAt)), 'truck')}
-            ${UI.kv('Planlanan teslim', U.dt(o.dueAt), 'calendar')}${o.readyAt ? UI.kv('Hazır', U.dt(o.readyAt), 'package') : ''}
-            ${o.handedBy ? UI.kv('Dükkana getiren', `<a href="#/kisi/${o.handedBy}">${esc(S.person(o.handedBy)?.name || '')}</a>`, 'user') : ''}
+            ${o.measureAt ? UI.kv('Ölçü randevusu', U.dt(o.measureAt), 'ruler') : UI.kv('Ölçü', esc(C.MEASURE[o.measureMethod] || '—'), 'ruler')}
+            ${o.approvedAt ? UI.kv('Onay', U.dt(o.approvedAt), 'check') : ''}
+            ${UI.kv(o.deliveryMethod === 'montaj' ? 'Planlanan montaj' : 'Planlanan teslim', U.dt(o.dueAt), 'calendar')}${o.readyAt ? UI.kv('Hazır', U.dt(o.readyAt), 'package') : ''}
+            ${o.orderedBy ? UI.kv('Siparişi veren', `<a href="#/kisi/${o.orderedBy}">${esc(S.person(o.orderedBy)?.name || '')}</a>`, 'user') : ''}
+            ${o.sokum ? UI.kv('Eski perde sökümü', 'Var', 'scissors') : ''}
             ${o.deliveredAt ? UI.kv('Teslim alan', `<a href="#/kisi/${o.deliveredTo}">${esc(o.deliveredToName)}</a>`, 'check-circle') + UI.kv('Teslim zamanı', U.dt(o.deliveredAt), 'clock') : ''}
             ${o.signature ? `<div style="margin-top:10px"><div class="faint" style="font-size:12px;margin-bottom:6px">İmza</div><img src="${o.signature}" alt="İmza" style="width:100%;max-height:120px;object-fit:contain;background:#fff;border-radius:10px;border:1px solid var(--border)"></div>` : ''}
             ${o.status === 'hazir' ? `<a class="btn primary block" style="margin-top:12px" href="#/teslimat?siparis=${id}">${I('check', 16)} Teslimat masasında aç</a>` : ''}
@@ -244,7 +250,7 @@
   V.desk = function () {
     const q = U.qs();
     const html = `
-      <div class="page-head"><div><h1>Teslimat Masası</h1><p>Dükkana gelen kişiyi seçin, teslim kodunu doğrulayın, perdeleri kontrol edip imza alın.</p></div></div>
+      <div class="page-head"><div><h1>Teslimat Masası</h1><p>Hazır perdeleri teslim edin: dükkana gelen ya da montajda evde bulunan yetkili kişiyi seçin, teslim kodunu doğrulayın, perdeleri kontrol edip imza alın.</p></div></div>
       <div class="desk">
         <div class="card desk-list"><div class="card-head" style="flex-direction:column;align-items:stretch;gap:10px"><div class="row"><h3>Teslime hazır</h3><span class="count-badge" id="dcount"></span></div>
           <div class="input-wrap">${I('search', 16, 'input-ic')}<input class="input has-ic" id="dq" placeholder="Kod, ev, isim, telefon veya teslim kodu"></div></div>
@@ -259,9 +265,9 @@
       const renderList = () => {
         const term = el.querySelector('#dq').value;
         const ready = S.orders().filter((o) => o.status === 'hazir').filter((o) => U.match(term, o.code, o.deliveryCode, houseName(o.houseId), S.members(o.houseId).map((m) => m.person.name + ' ' + m.person.phone).join(' ')));
-        const others = S.orders().filter((o) => ['utude', 'yikamada', 'atolyede'].includes(o.status)).filter((o) => term && U.match(term, o.code, houseName(o.houseId), S.members(o.houseId).map((m) => m.person.name + ' ' + m.person.phone).join(' ')));
+        const others = S.orders().filter((o) => ['uretim', 'tedarik', 'teklif', 'olcu'].includes(o.status)).filter((o) => term && U.match(term, o.code, houseName(o.houseId), S.members(o.houseId).map((m) => m.person.name + ' ' + m.person.phone).join(' ')));
         el.querySelector('#dcount').textContent = ready.length;
-        listEl.innerHTML = (ready.map((o) => `<div class="desk-order${sel === o.id ? ' on' : ''}" data-sel="${o.id}"><span class="room-ic" style="background:${S.house(o.houseId)?.color};color:#fff">${UI.houseIcon(S.house(o.houseId)?.type, 18)}</span><div style="min-width:0;flex:1"><strong>${esc(houseName(o.houseId))}</strong><small>${esc(o.code)} · ${o.items.length} parça · ${U.rel(o.readyAt)}</small>${V.whoCan(o.houseId, 3)}</div></div>`).join('') || (term ? '' : UI.empty('package', 'Teslime hazır sipariş yok', 'Ütü aşaması biten siparişler burada görünür.')))
+        listEl.innerHTML = (ready.map((o) => `<div class="desk-order${sel === o.id ? ' on' : ''}" data-sel="${o.id}"><span class="room-ic" style="background:${S.house(o.houseId)?.color};color:#fff">${UI.houseIcon(S.house(o.houseId)?.type, 18)}</span><div style="min-width:0;flex:1"><strong>${esc(houseName(o.houseId))}</strong><small>${esc(o.code)} · ${o.items.length} parça · ${U.rel(o.readyAt)}</small>${V.whoCan(o.houseId, 3)}</div></div>`).join('') || (term ? '' : UI.empty('package', 'Teslime hazır sipariş yok', 'Dikimi biten siparişler burada görünür.')))
           + (others.length ? `<div class="pal-group">Henüz hazır değil</div>` + others.map((o) => `<a class="desk-order" href="#/siparis/${o.id}" style="opacity:.7"><div style="flex:1;min-width:0"><strong>${esc(houseName(o.houseId))}</strong><small>${esc(o.code)}</small></div>${UI.status(o.status, true)}</a>`).join('') : '')
           + (term && !ready.length && !others.length ? UI.empty('search', 'Sonuç yok') : '');
         listEl.querySelectorAll('[data-sel]').forEach((d) => d.addEventListener('click', () => { sel = d.dataset.sel; Object.assign(state, { person: null, code: '', codeOk: false, idOverride: false, checks: new Set(), payAmount: null, signed: false }); U.setQs({ siparis: sel }); renderList(); renderPanel(); }));
@@ -377,11 +383,10 @@
     const selDay = q.gun || U.toDateInput(now.toISOString());
     const events = [];
     S.orders().forEach((o) => {
-      if (o.status === 'planlandi') events.push({ at: o.pickupAt, o, kind: 'alim', label: 'Alım', color: C.ST.planlandi.color, icon: 'truck' });
-      else if (C.ACTIVE.includes(o.status)) events.push({ at: o.dueAt, o, kind: 'plan', label: 'Teslim planı', color: o.status === 'hazir' ? C.ST.hazir.color : C.ST.utude.color, icon: 'package' });
-      if (o.status === 'teslim') events.push({ at: o.deliveredAt, o, kind: 'teslim', label: 'Teslim edildi', color: C.ST.teslim.color, icon: 'check-circle' });
-      const al = o.history.find((x) => x.status === 'atolyede');
-      if (al && o.status !== 'planlandi') events.push({ at: al.at, o, kind: 'alindi', label: 'Teslim alındı', color: C.ST.atolyede.color, icon: 'store' });
+      if (o.measureAt && o.status !== 'iptal') events.push({ at: o.measureAt, o, kind: 'olcu', label: 'Ölçü randevusu', color: C.ST.olcu.color, icon: 'ruler' });
+      if (['tedarik', 'uretim', 'hazir'].includes(o.status)) events.push({ at: o.dueAt, o, kind: 'plan', label: o.deliveryMethod === 'montaj' ? 'Montaj planı' : 'Teslim planı', color: o.status === 'hazir' ? C.ST.hazir.color : C.ST.uretim.color, icon: o.deliveryMethod === 'montaj' ? 'sparkles' : 'package' });
+      if (o.status === 'teslim') events.push({ at: o.deliveredAt, o, kind: 'teslim', label: o.deliveryMethod === 'montaj' ? 'Montaj yapıldı' : 'Teslim edildi', color: C.ST.teslim.color, icon: 'check-circle' });
+      if (o.approvedAt) events.push({ at: o.approvedAt, o, kind: 'onay', label: 'Sipariş onaylandı', color: C.ST.teklif.color, icon: 'tag' });
     });
     const key = (iso) => U.toDateInput(iso);
     const byDay = {};
@@ -392,10 +397,10 @@
     for (let i = 0; i < 42; i++) { const d = new Date(start); d.setDate(start.getDate() + i); days.push(d); }
     const dayEvents = byDay[selDay] || [];
     const html = `
-      <div class="page-head"><div><h1>Takvim</h1><p>Alım randevuları, planlanan teslimler ve tamamlanan işler.</p></div>
+      <div class="page-head"><div><h1>Takvim</h1><p>Ölçü randevuları, onaylanan siparişler, planlanan montaj ve teslimler.</p></div>
         <div class="actions"><a class="btn-icon" href="#/takvim?ay=${prev.getFullYear()}-${prev.getMonth() + 1}">${I('chevron-left')}</a><a class="btn" href="#/takvim">Bugün</a><a class="btn-icon" href="#/takvim?ay=${next.getFullYear()}-${next.getMonth() + 1}">${I('chevron-right')}</a></div></div>
       <div class="split">
-        <div class="card" style="overflow:hidden"><div class="card-head"><h3 style="font-size:18px;font-family:var(--font-display);font-weight:600">${U.MONTHS[m - 1]} ${y}</h3><div class="actions legend">${[['Alım', C.ST.planlandi.color], ['Teslim alındı', C.ST.atolyede.color], ['Teslim planı', C.ST.utude.color], ['Hazır', C.ST.hazir.color], ['Teslim edildi', C.ST.teslim.color]].map(([l, c]) => `<span style="--c:${c}"><i></i>${l}</span>`).join('')}</div></div>
+        <div class="card" style="overflow:hidden"><div class="card-head"><h3 style="font-size:18px;font-family:var(--font-display);font-weight:600">${U.MONTHS[m - 1]} ${y}</h3><div class="actions legend">${[['Ölçü', C.ST.olcu.color], ['Onay', C.ST.teklif.color], ['Teslim/montaj planı', C.ST.uretim.color], ['Hazır', C.ST.hazir.color], ['Teslim edildi', C.ST.teslim.color]].map(([l, c]) => `<span style="--c:${c}"><i></i>${l}</span>`).join('')}</div></div>
           <div class="cal">${['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'].map((d) => `<div class="cal-h">${d}</div>`).join('')}
           ${days.map((d) => { const k = key(d.toISOString()); const ev = byDay[k] || []; const isT = k === key(now.toISOString()); return `<a class="cal-d ${d.getMonth() !== m - 1 ? 'out' : ''} ${isT ? 'today' : ''} ${k === selDay ? 'sel' : ''}" href="#/takvim?ay=${y}-${m}&gun=${k}"><span class="cal-n">${d.getDate()}</span>${ev.slice(0, 3).map((e) => `<span class="cal-ev" style="--c:${e.color}">${I(e.icon, 11)}<span>${esc(houseName(e.o.houseId))}</span></span>`).join('')}${ev.length > 3 ? `<span class="cal-more">+${ev.length - 3} daha</span>` : ''}</a>`; }).join('')}</div></div>
         <div class="card"><div class="card-head"><div><h3>${U.dateLong(new Date(selDay + 'T12:00').toISOString())}</h3><p>${dayEvents.length} kayıt</p></div></div>
@@ -407,7 +412,7 @@
   /* ---------- MESAJLAR ---------- */
   V.messages = function () {
     const q = U.qs();
-    const kinds = { '': 'Tümü', randevu: 'Randevu', alindi: 'Teslim alındı', hazir: 'Teslime hazır', teslim: 'Teslim edildi', bilgi: 'Bilgi' };
+    const kinds = { '': 'Tümü', randevu: 'Ölçü randevusu', teklif: 'Teklif', onay: 'Onay', hazir: 'Teslime hazır', teslim: 'Teslim edildi', bilgi: 'Bilgi' };
     const html = `
       <div class="page-head"><div><h1>Mesajlar</h1><p>Müşterilere giden otomatik ve manuel SMS bildirimleri (demo – gerçek SMS gönderilmez).</p></div>
         <div class="actions"><button class="btn primary" data-act="smsForm">${I('send', 16)} Yeni SMS</button></div></div>
@@ -432,12 +437,12 @@
   V.curtains = function () {
     const q = U.qs();
     const html = `
-      <div class="page-head"><div><h1>Perdeler</h1><p>Tüm evlerdeki ${S.allCurtains().length} perde: türü, kumaşı, ölçüsü ve yıkama geçmişiyle.</p></div></div>
+      <div class="page-head"><div><h1>Perdeler</h1><p>Tüm evlerdeki ${S.allCurtains().length} perde: türü, kumaşı, ölçüsü, takılma tarihi ve garantisiyle.</p></div></div>
       <div class="grid g5" style="margin-bottom:18px" id="type-tiles"></div>
       <div class="toolbar">
         <div class="input-wrap">${I('search', 16, 'input-ic')}<input class="input has-ic" id="cq" placeholder="Kod, kumaş, renk, ev veya oda ara…" value="${esc(q.q || '')}"></div>
         <select class="input" id="ct"><option value="">Tüm türler</option>${C.TYPE_LIST.map((t) => `<option ${q.tur === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
-        <select class="input" id="cs"><option value="">Tüm durumlar</option><option value="evde" ${q.durum === 'evde' ? 'selected' : ''}>Evde asılı</option><option value="atolye" ${q.durum === 'atolye' ? 'selected' : ''}>Atölyede</option><option value="tamir" ${q.durum === 'tamir' ? 'selected' : ''}>Tamir gerekli</option><option value="hic" ${q.durum === 'hic' ? 'selected' : ''}>Hiç yıkanmamış</option></select>
+        <select class="input" id="cs"><option value="">Tüm durumlar</option><option value="takili" ${q.durum === 'takili' ? 'selected' : ''}>Takılı</option><option value="siparis" ${q.durum === 'siparis' ? 'selected' : ''}>Siparişte (teklif/üretim)</option><option value="uretim" ${q.durum === 'uretim' ? 'selected' : ''}>Üretimde</option><option value="garanti" ${q.durum === 'garanti' ? 'selected' : ''}>Garantisi biten</option><option value="yenile" ${q.durum === 'yenile' ? 'selected' : ''}>Yenilenmeli (yıpranmış)</option><option value="kayitli" ${q.durum === 'kayitli' ? 'selected' : ''}>Siparişi olmayan</option></select>
         <span class="grow"></span><span class="faint" id="ccount" style="font-size:13px"></span></div>
       <div class="card"><div class="tbl-wrap" id="cur-out"></div></div>`;
     const mount = (el) => {
@@ -451,16 +456,18 @@
         const list = S.allCurtains().filter((c) => {
           if (p.tur && c.type !== p.tur) return false;
           const st = S.curtainStatus(c.id);
-          if (p.durum === 'evde' && st.key !== 'evde') return false;
-          if (p.durum === 'atolye' && (st.key === 'evde' || st.key === 'planlandi')) return false;
-          if (p.durum === 'tamir' && c.condition !== 'Tamir Gerekli') return false;
-          if (p.durum === 'hic' && c.washCount) return false;
+          if (p.durum === 'takili' && st.key !== 'takili') return false;
+          if (p.durum === 'siparis' && !st.order) return false;
+          if (p.durum === 'uretim' && !['tedarik', 'uretim', 'hazir'].includes(st.key)) return false;
+          if (p.durum === 'garanti') { const w = S.warrantyEnd(c); if (!w || new Date(w) > new Date()) return false; }
+          if (p.durum === 'yenile' && !['Yıpranmış', 'Değişmeli'].includes(c.condition)) return false;
+          if (p.durum === 'kayitli' && st.key !== 'kayitli') return false;
           const path = S.path(c.id);
           return U.match(p.q || '', c.code, c.type, c.fabric, c.colorName, path.house?.title, path.room?.name, path.facade?.name);
         });
         el.querySelector('#ccount').textContent = `${list.length} perde · ${num(sum(list, (c) => C.area(c)), 0)} m²`;
-        out.innerHTML = list.length ? `<table class="tbl"><thead><tr><th>Perde</th><th>Konum</th><th>Ölçü</th><th class="num">Alan</th><th>Durum</th><th class="num">Yıkama</th><th>Son yıkama</th></tr></thead><tbody>
-          ${list.slice(0, limit).map((c) => { const path = S.path(c.id); return `<tr class="link" data-href="#/perde/${c.id}"><td><div class="cell-main">${Viz.swatch(c, 36)}<div><strong>${esc(c.type)} <span class="faint mono" style="font-size:11.5px">${esc(c.code)}</span></strong><small>${esc(c.fabric)} · ${esc(c.colorName)}</small></div></div></td><td><strong style="font-weight:600">${esc(path.house?.title)}</strong><br><small class="faint">${esc(path.room?.name)} · ${esc(path.facade?.name)}</small></td><td class="nowrap">${UI.dim(c)}${!C.CURTAIN_TYPES[c.type].flat ? `<br><small class="faint">pile 1:${c.pleat}</small>` : ''}</td><td class="num">${num(C.area(c), 1)} m²</td><td>${UI.curtainStatus(c.id, true)}${c.condition === 'Tamir Gerekli' ? ` <span class="chip" style="height:22px;color:var(--accent)">${I('scissors', 12)} Tamir</span>` : ''}</td><td class="num">${c.washCount || '—'}</td><td>${c.lastWashed ? U.date(c.lastWashed) : '<span class="faint">—</span>'}</td></tr>`; }).join('')}</tbody></table>
+        out.innerHTML = list.length ? `<table class="tbl"><thead><tr><th>Perde</th><th>Konum</th><th>Ölçü</th><th class="num">Kumaş</th><th>Durum</th><th>Takılma</th><th>Garanti</th></tr></thead><tbody>
+          ${list.slice(0, limit).map((c) => { const path = S.path(c.id); return `<tr class="link" data-href="#/perde/${c.id}"><td><div class="cell-main">${Viz.swatch(c, 36)}<div><strong>${esc(c.type)} <span class="faint mono" style="font-size:11.5px">${esc(c.code)}</span></strong><small>${esc(c.fabric)} · ${esc(c.colorName)}</small></div></div></td><td><strong style="font-weight:600">${esc(path.house?.title)}</strong><br><small class="faint">${esc(path.room?.name)} · ${esc(path.facade?.name)}</small></td><td class="nowrap">${UI.dim(c)}${!C.CURTAIN_TYPES[c.type].flat ? `<br><small class="faint">pile 1:${c.pleat}</small>` : ''}</td><td class="num">${C.CURTAIN_TYPES[c.type].flat ? num(C.flatArea(c), 1) + ' m²' : num(C.fabricMeters(c), 1) + ' m'}</td><td>${UI.curtainStatus(c.id, true)}${['Yıpranmış', 'Değişmeli'].includes(c.condition) ? ` <span class="chip" style="height:22px;color:var(--accent)">${I('refresh', 12)} ${esc(c.condition)}</span>` : ''}</td><td>${c.installedAt ? U.date(c.installedAt) : '<span class="faint">—</span>'}</td><td>${(() => { const w = S.warrantyEnd(c); return w ? (new Date(w) > new Date() ? `<span class="chip ok" style="height:22px">${I('shield', 12)} ${U.date(w)}</span>` : '<span class="faint">Bitti</span>') : '<span class="faint">—</span>'; })()}</td></tr>`; }).join('')}</tbody></table>
           ${list.length > limit ? `<div class="card-foot"><button class="btn block" id="more">${list.length - limit} perde daha göster</button></div>` : ''}` : UI.empty('curtain', 'Perde bulunamadı');
         out.querySelector('#more')?.addEventListener('click', () => { limit += 120; render(); });
       };

@@ -16,7 +16,7 @@
       icon = 'wallet'; color = '#13875a';
       html = `<a class="ref" href="#/siparis/${ev.order.id}">${esc(ev.order.code)}</a> · ${esc(houseName(ev.order.houseId))} — ${esc(ev.note)}`;
     } else {
-      const st = C.ST[ev.kind] || C.ST.atolyede;
+      const st = C.ST[ev.kind] || C.ST.teklif;
       icon = st.icon; color = st.color;
       html = `<a class="ref" href="#/siparis/${ev.order.id}">${esc(ev.order.code)}</a> · ${esc(houseName(ev.order.houseId))} — <span class="muted">${esc(ev.note)}</span>`;
     }
@@ -25,7 +25,7 @@
 
   V.miniCurtain = (c) => {
     const st = S.curtainStatus(c.id);
-    return `<span class="mini-curtain" style="--sw:${c.color};--st:${st.color}" data-tip="${esc(`${c.code} · ${c.type} · ${c.fabric} · ${c.colorName}\n${st.label}`)}"><i></i>${esc(c.type)}${st.key !== 'evde' ? '<b></b>' : ''}</span>`;
+    return `<span class="mini-curtain" style="--sw:${c.color};--st:${st.color}" data-tip="${esc(`${c.code} · ${c.type} · ${c.fabric} · ${c.colorName}\n${st.label}`)}"><i></i>${esc(c.type)}${st.order ? '<b></b>' : ''}</span>`;
   };
 
   V.whoCan = (houseId, max = 6) => {
@@ -63,22 +63,25 @@
     const d30 = new Date(now.getTime() - 30 * 864e5), d60 = new Date(now.getTime() - 60 * 864e5);
     const pays = orders.flatMap((o) => o.payments.map((p) => ({ ...p, o })));
     const monthRev = sum(pays.filter((p) => new Date(p.at) >= d30), (p) => p.amount);
-    const prevRev = sum(pays.filter((p) => new Date(p.at) >= d60 && new Date(p.at) < d30), (p) => p.amount);
-    const delta = prevRev ? Math.round(((monthRev - prevRev) / prevRev) * 100) : 0;
+    const recentPays = pays.filter((p) => new Date(p.at) >= d30);
+    void d60;
     const openOrders = orders.filter((o) => o.status === 'teslim' && S.totals(o).balance > 0);
     const balance = sum(openOrders, (o) => S.totals(o).balance);
-    const wsItems = active.filter((o) => o.status !== 'planlandi').flatMap((o) => o.items).map((i) => S.curtain(i.curtainId)).filter(Boolean);
-    const wsArea = sum(wsItems, (c) => C.area(c));
+    const prodOrders = active.filter((o) => ['tedarik', 'uretim', 'hazir'].includes(o.status));
+    const wsItems = prodOrders.flatMap((o) => o.items).map((i) => S.curtain(i.curtainId)).filter(Boolean);
+    const wsMeters = sum(wsItems, (c) => C.fabricMeters(c));
+    const quotes = by('teklif');
+    const quoteTotal = sum(quotes, (o) => S.totals(o).total);
     const h = now.getHours();
     const greet = h < 5 ? 'İyi geceler' : h < 12 ? 'Günaydın' : h < 18 ? 'İyi günler' : h < 22 ? 'İyi akşamlar' : 'İyi geceler';
 
     // Ajanda
     const todayEnd = U.sod(now).getTime() + 2 * 864e5;
     const agenda = [];
-    by('planlandi').forEach((o) => { if (new Date(o.pickupAt).getTime() < todayEnd) agenda.push({ at: o.pickupAt, o, kind: 'alim' }); });
-    active.filter((o) => o.status !== 'planlandi').forEach((o) => { if (new Date(o.dueAt).getTime() < todayEnd) agenda.push({ at: o.dueAt, o, kind: 'teslim' }); });
+    by('olcu').forEach((o) => { if (o.measureAt && new Date(o.measureAt).getTime() < todayEnd) agenda.push({ at: o.measureAt, o, kind: 'olcu' }); });
+    active.filter((o) => ['tedarik', 'uretim', 'hazir'].includes(o.status)).forEach((o) => { if (new Date(o.dueAt).getTime() < todayEnd) agenda.push({ at: o.dueAt, o, kind: 'teslim' }); });
     agenda.sort((a, b) => (a.at < b.at ? -1 : 1));
-    const todayPick = agenda.filter((a) => a.kind === 'alim' && U.dayDiff(a.at) === 0).length;
+    const todayMeasure = agenda.filter((a) => a.kind === 'olcu' && U.dayDiff(a.at) === 0).length;
     const todayDue = agenda.filter((a) => a.kind === 'teslim' && U.dayDiff(a.at) <= 0).length;
 
     // Haftalık tahsilat (son 12 hafta)
@@ -91,7 +94,7 @@
     }
     const typeCounts = {};
     wsItems.forEach((c) => { typeCounts[c.type] = (typeCounts[c.type] || 0) + 1; });
-    const typeData = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ label: k, value: v, tip: `${k}: ${v} parça atölyede` }));
+    const typeData = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ label: k, value: v, tip: `${k}: ${v} parça üretimde` }));
 
     // En değerli evler & çoklu ev sahipleri
     const top = S.houses().map((h) => ({ h, st: S.houseStats(h.id) })).sort((a, b) => b.st.spent - a.st.spent).slice(0, 6);
@@ -102,16 +105,16 @@
         <svg class="hero-deco" width="300" height="220" viewBox="0 0 120 88"><path d="M0 4h120" stroke="#fff" stroke-width="3"/><path d="M4 4c6 30 4 60 0 84h36C30 60 34 30 40 4z" fill="#fff"/><path d="M116 4c-6 30-4 60 0 84H80c10-28 6-58 0-84z" fill="#fff"/></svg>
         <div><div class="eyebrow" style="color:rgba(255,255,255,.7)">${U.dateLong(now.toISOString())}</div>
           <h1>${greet}, ${esc(shop.ownerShort)}</h1>
-          <p>Bugün <strong>${todayPick}</strong> alım randevusu ve <strong>${todayDue}</strong> teslim planı var. <strong>${ready.length}</strong> sipariş teslim alınmayı bekliyor, atölyede <strong>${wsItems.length}</strong> parça perde işlemde.</p></div>
+          <p>Bugün <strong>${todayMeasure}</strong> ölçü randevusu ve <strong>${todayDue}</strong> teslim/montaj planı var. <strong>${quotes.length}</strong> teklif onay bekliyor, <strong>${ready.length}</strong> sipariş teslime hazır, dikimde ve tedarikte <strong>${wsItems.length}</strong> parça perde var.</p></div>
         <div class="hero-actions"><a class="btn" href="#/teslimat">${I('package', 16)} Teslimat Masası</a><button class="btn light" data-act="newOrder">${I('plus', 16)} Yeni Sipariş</button></div>
       </section>
 
       <div class="grid g5">
-        ${kpi('clipboard', 'Aktif sipariş', num(active.length), `${by('planlandi').length} alım planlı · ${active.length - by('planlandi').length} atölyede`, '#/siparisler')}
+        ${kpi('clipboard', 'Aktif sipariş', num(active.length), `${by('olcu').length} ölçü · ${quotes.length} teklif · ${prodOrders.length} üretimde`, '#/siparisler')}
+        ${kpi('tag', 'Onay bekleyen teklif', money(quoteTotal), `${quotes.length} teklif müşteride`, '#/siparisler?gorunum=liste&durum=teklif')}
         ${kpi('package', 'Teslime hazır', num(ready.length), ready.length ? `En eskisi ${U.rel(ready[0].readyAt)}` : 'Bekleyen yok', '#/teslimat')}
-        ${kpi('wallet', 'Son 30 gün tahsilat', money(monthRev), `<span class="delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'} %${Math.abs(delta)}</span> önceki 30 güne göre`, '#/raporlar')}
+        ${kpi('wallet', 'Son 30 gün tahsilat', money(monthRev), `${recentPays.length} ödeme · ${recentPays.filter((p) => p.note === 'Kapora').length} kapora`, '#/raporlar')}
         ${kpi('alert', 'Açık bakiye', money(balance), `Teslim edilmiş ${openOrders.length} siparişte alacak`, '#/siparisler?gorunum=liste&durum=teslim&bakiye=1')}
-        ${kpi('droplets', 'Atölyedeki perde', num(wsItems.length), `${num(wsArea, 0)} m² kumaş işlemde`, '#/perdeler?durum=atolye')}
       </div>
 
       <div class="section-title"><h2>Sipariş akışı</h2><div class="actions"><a class="btn sm ghost" href="#/siparisler">Panoya git ${I('arrow-right', 14)}</a></div></div>
@@ -129,8 +132,8 @@
             const late = a.kind === 'teslim' && dd < 0;
             return `<a class="agenda-item" href="#/siparis/${o.id}">
               <div class="agenda-time"><strong>${U.time(a.at)}</strong><small style="${late ? 'color:var(--danger)' : ''}">${dd === 0 ? 'Bugün' : dd === 1 ? 'Yarın' : dd < 0 ? `${-dd} gün geç` : U.dshort(a.at)}</small></div>
-              <span class="tl-ic" style="--c:${a.kind === 'alim' ? C.ST.planlandi.color : C.ST[o.status].color}">${I(a.kind === 'alim' ? 'truck' : 'package', 15)}</span>
-              <div class="agenda-main"><strong>${esc(houseName(o.houseId))}</strong><small>${esc(o.code)} · ${a.kind === 'alim' ? esc(C.PICKUP[o.pickupMethod]) : 'Planlanan teslim · ' + esc(C.DELIVERY[o.deliveryMethod])} · ${o.items.length} parça</small></div>
+              <span class="tl-ic" style="--c:${C.ST[o.status].color}">${I(a.kind === 'olcu' ? 'ruler' : o.deliveryMethod === 'montaj' ? 'sparkles' : 'package', 15)}</span>
+              <div class="agenda-main"><strong>${esc(houseName(o.houseId))}</strong><small>${esc(o.code)} · ${a.kind === 'olcu' ? 'Ölçü randevusu · ' + esc(S.house(o.houseId)?.district || '') : 'Planlanan ' + (o.deliveryMethod === 'montaj' ? 'montaj' : 'teslim') + ' · ' + esc(C.DELIVERY[o.deliveryMethod])} · ${o.items.length} parça</small></div>
               ${UI.status(o.status, true)}</a>`;
           }).join('') : UI.empty('calendar', 'Ajanda boş', 'Bugün ve yarın için planlanmış iş yok.')}</div>
         </div>
@@ -146,8 +149,8 @@
       <div class="grid g2" style="margin-top:18px">
         <div class="card"><div class="card-head"><h3>Haftalık tahsilat</h3><p>Son 12 hafta · ₺</p><div class="actions"><span class="faint" style="font-size:12.5px">Bu hafta: <strong style="color:var(--text)">${money(weeks[weeks.length - 1].value)}</strong></span></div></div>
           <div class="card-body">${Viz.columns(weeks, { height: 190, hlLast: true, tipFmt: (d) => `${d.label} haftası: ${money(d.value)}` })}</div></div>
-        <div class="card"><div class="card-head"><h3>Atölyedeki perdeler</h3><p>Türe göre parça sayısı</p></div>
-          <div class="card-body">${typeData.length ? Viz.hbars(typeData) : UI.empty('droplets', 'Atölye boş')}</div></div>
+        <div class="card"><div class="card-head"><h3>Üretimdeki perdeler</h3><p>Tedarik, dikim ve hazır · ${num(wsMeters, 0)} m pileli kumaş</p></div>
+          <div class="card-body">${typeData.length ? Viz.hbars(typeData) : UI.empty('scissors', 'Üretimde perde yok')}</div></div>
       </div>
 
       <div class="split" style="margin-top:18px">
@@ -173,7 +176,7 @@
     const districts = [...new Set(S.houses().map((h) => h.district))].sort((a, b) => a.localeCompare(b, 'tr'));
     const types = Object.keys(C.HOUSE_TYPES);
     const html = `
-      <div class="page-head"><div><h1>Evler</h1><p>Perdelerini yıkadığınız ${S.houses().length} adres. Her evin odaları, cepheleri ve perdeleri ayrı ayrı kayıtlı.</p></div>
+      <div class="page-head"><div><h1>Evler</h1><p>Perde sattığınız ve ölçü aldığınız ${S.houses().length} adres. Her evin odaları, cepheleri ve takılan perdeleri ayrı ayrı kayıtlı.</p></div>
         <div class="actions"><button class="btn primary" data-act="houseForm">${I('plus', 16)} Yeni Ev</button></div></div>
       <div class="toolbar">
         <div class="input-wrap">${I('search', 16, 'input-ic')}<input class="input has-ic" id="hq" placeholder="Ev adı, adres, kod veya kişi ara…" value="${esc(q.q || '')}"></div>
@@ -244,7 +247,7 @@
         <div class="cards-auto">${members.map((m) => V.memberCard(m, id)).join('')}
           <button class="add-tile" data-act="linkForm" data-house="${id}">${I('user-plus', 22)} Kişi bağla</button></div>`;
     } else if (tab === 'siparisler') {
-      body = orders.length ? `<div class="card"><div class="tbl-wrap">${V.ordersTable(orders, { house: false })}</div></div>` : UI.empty('clipboard', 'Henüz sipariş yok', 'Bu ev için ilk yıkama siparişini oluşturun.', `<button class="btn primary" data-act="newOrder" data-house="${id}">${I('plus', 16)} Sipariş oluştur</button>`);
+      body = orders.length ? `<div class="card"><div class="tbl-wrap">${V.ordersTable(orders, { house: false })}</div></div>` : UI.empty('clipboard', 'Henüz sipariş yok', 'Bu ev için ölçü randevusu veya teklif oluşturun.', `<button class="btn primary" data-act="newOrder" data-house="${id}">${I('plus', 16)} Sipariş oluştur</button>`);
     } else {
       const evs = orders.flatMap((o) => o.history.map((x) => ({ at: x.at, kind: x.payment ? 'payment' : x.status, order: o, note: x.note, by: x.by }))).sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 14);
       body = `<div class="split">
@@ -272,7 +275,7 @@
       ${st.active ? `<div class="card" style="margin-bottom:18px;border-color:${C.ST[st.active.status].color}55"><div class="card-head"><span class="tl-ic" style="--c:${C.ST[st.active.status].color}">${I(C.ST[st.active.status].icon, 15)}</span><div><h3>Aktif sipariş: <a href="#/siparis/${st.active.id}">${esc(st.active.code)}</a></h3><p>${st.active.items.length} parça · Planlanan teslim ${U.date(st.active.dueAt)} · ${esc(C.DELIVERY[st.active.deliveryMethod])}</p></div><div class="actions">${st.active.status === 'hazir' ? `<a class="btn sm primary" href="#/teslimat?siparis=${st.active.id}">${I('check', 14)} Teslim et</a>` : ''}<a class="btn sm" href="#/siparis/${st.active.id}">Detay ${I('arrow-right', 14)}</a></div></div><div class="card-body">${UI.stepper(st.active)}</div></div>` : ''}
       <div class="stat-strip">
         <div><span>Oda</span><strong>${st.rooms}</strong></div><div><span>Cephe</span><strong>${st.facades}</strong></div><div><span>Perde</span><strong>${st.curtains}</strong></div>
-        <div><span>Kumaş alanı</span><strong>${num(st.area, 1)} m²</strong></div><div><span>Sipariş</span><strong>${st.orders}</strong></div>
+        <div><span>Perde alanı</span><strong>${num(st.area, 1)} m²</strong></div><div><span>Sipariş</span><strong>${st.orders}</strong></div>
         <div><span>Toplam ödeme</span><strong>${money(st.spent)}</strong></div><div><span>Açık bakiye</span><strong class="${st.balance ? 'warn' : ''}">${st.balance ? money(st.balance) : '—'}</strong></div>
       </div>
       <nav class="tabs">${tabs.map(([k, l, ic, n]) => `<a href="#/ev/${id}?sekme=${k}" class="${tab === k ? 'on' : ''}">${I(ic, 16)} ${l}${n !== undefined ? ` <span class="count-badge">${n}</span>` : ''}</a>`).join('')}</nav>
@@ -326,7 +329,7 @@
         <div class="detail-title"><div class="eyebrow">Oda · ${esc(r.type)}</div><h1>${esc(r.name)}</h1>
           <div class="detail-meta"><span>${UI.houseIcon(h.type, 15)} <a href="#/ev/${h.id}">${esc(h.title)}</a></span><span>${I('pin', 15)} ${esc(h.neighborhood)}, ${esc(h.district)}</span></div></div>
         <div class="detail-actions"><button class="btn" data-act="roomForm" data-id="${id}">${I('edit', 16)} Düzenle</button><button class="btn primary" data-act="facadeForm" data-room="${id}">${I('plus', 16)} Cephe Ekle</button></div></div>
-      <div class="stat-strip"><div><span>Cephe</span><strong>${facs.length}</strong></div><div><span>Perde</span><strong>${cs.length}</strong></div><div><span>Kumaş alanı</span><strong>${num(sum(cs, (c) => C.area(c)), 1)} m²</strong></div><div><span>Tahmini yıkama</span><strong>${money(sum(cs, (c) => S.washPrice(c)))}</strong></div><div><span>Atölyede</span><strong>${cs.filter((c) => S.curtainStatus(c.id).key !== 'evde').length}</strong></div></div>
+      <div class="stat-strip"><div><span>Cephe</span><strong>${facs.length}</strong></div><div><span>Perde</span><strong>${cs.length}</strong></div><div><span>Pileli kumaş</span><strong>${num(sum(cs, (c) => C.fabricMeters(c)), 1)} m</strong></div><div><span>Perde değeri</span><strong>${money(sum(cs, (c) => S.price(c)))}</strong></div><div><span>Siparişte</span><strong>${cs.filter((c) => S.activeOrderFor(c.id)).length}</strong></div></div>
       ${r.notes ? `<div class="note-box" style="margin-bottom:18px">${I('info', 16)}<span>${esc(r.notes)}</span></div>` : ''}
       <div class="grid g2">
         ${facs.map((f) => `<div class="card facade-card">
@@ -341,7 +344,7 @@
 
   V.curtainRow = (c, opt = {}) => `<a class="curtain-card" href="#/perde/${c.id}" style="border-top:1px solid var(--border)">${Viz.swatch(c, opt.size || 42)}
     <div style="min-width:0"><h4>${esc(c.type)} <span class="faint mono" style="font-size:12px;font-weight:600">${esc(c.code)}</span></h4><div class="meta">${esc(c.fabric)} · ${esc(c.colorName)} · ${UI.dim(c)}${!C.CURTAIN_TYPES[c.type]?.flat ? ` · pile 1:${c.pleat}` : ''}</div></div>
-    <div class="right">${UI.curtainStatus(c.id, true)}<small class="faint">${c.washCount ? `${c.washCount}. yıkama · ${U.rel(c.lastWashed)}` : 'Hiç yıkanmadı'}</small></div></a>`;
+    <div class="right">${UI.curtainStatus(c.id, true)}<small class="faint">${c.installedAt ? `Takıldı · ${U.date(c.installedAt)}` : money(S.price(c))}</small></div></a>`;
 
   /* ---------- CEPHE ---------- */
   V.facade = function ({ id }) {
@@ -367,8 +370,8 @@
             ${UI.kv('Açıklık tipi', esc(f.opening), 'window')}${UI.kv('Yön', esc(f.direction), 'compass')}${UI.kv('Ray genişliği', f.width + ' cm', 'ruler')}${UI.kv('Tavan–zemin yüksekliği', f.height + ' cm', 'ruler')}${UI.kv('Cephe alanı', num((f.width * f.height) / 10000, 2) + ' m²', 'grid')}${UI.kv('Perde sayısı', cs.length, 'curtain')}</div>
           <div class="info-box">${I('sun', 18)}<div><strong>Güneş durumu:</strong> ${esc(C.SUN[f.direction] || '')}</div></div>
           ${f.notes ? `<div class="note-box">${I('info', 16)}<span>${esc(f.notes)}</span></div>` : ''}
-          <div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Tahmini yıkama ücreti</h3>${cs.map((c) => UI.kv(`${esc(c.type)} <span class="faint">(${num(C.area(c), 1)} m²)</span>`, money(S.washPrice(c)))).join('')}${UI.kv('<strong>Toplam</strong>', `<strong>${money(sum(cs, (c) => S.washPrice(c)))}</strong>`)}
-            <button class="btn soft block" style="margin-top:12px" data-act="newOrder" data-house="${h.id}" data-preselect="${cs.map((c) => c.id).join(',')}">${I('droplets', 16)} Bu cepheyi yıkamaya gönder</button></div>
+          <div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Fiyat (güncel liste)</h3>${cs.map((c) => UI.kv(`${esc(c.type)} <span class="faint">(${C.CURTAIN_TYPES[c.type].flat ? num(C.flatArea(c), 1) + ' m²' : num(C.fabricMeters(c), 1) + ' m kumaş'})</span>`, money(S.price(c)))).join('')}${UI.kv('<strong>Toplam</strong>', `<strong>${money(sum(cs, (c) => S.price(c)))}</strong>`)}
+            <button class="btn soft block" style="margin-top:12px" data-act="newOrder" data-house="${h.id}" data-preselect="${cs.filter((c) => !S.activeOrderFor(c.id)).map((c) => c.id).join(',')}">${I('tag', 16)} Bu cephe için teklif hazırla</button></div>
         </div></div>`;
     const mount = (el) => {
       const hidden = new Set();
@@ -396,35 +399,43 @@
     const hist = S.curtainOrders(id);
     const area = C.area(c);
     const rate = S.prices().types[c.type] || 0;
+    const sale = hist.find((o) => o.status === 'teslim');
+    const saleItem = sale && sale.items.find((i) => i.curtainId === id);
+    const wEnd = S.warrantyEnd(c);
+    const meters = C.fabricMeters(c);
     const spec = (icon, k, v) => `<div class="spec"><span>${I(icon, 13)} ${k}</span><strong>${v}</strong></div>`;
     const html = `
       <div class="detail-head" style="--hc:${h.color}">
         ${Viz.swatch(c, 64)}
         <div class="detail-title"><div class="eyebrow">${esc(c.code)} · ${esc(T.desc || 'Perde')}</div><h1>${esc(c.type)} perde ${UI.curtainStatus(id)}</h1>
           <div class="detail-meta"><span>${UI.houseIcon(h.type, 15)} <a href="#/ev/${h.id}">${esc(h.title)}</a></span><span>${UI.roomIcon(r.type, 15)} <a href="#/oda/${r.id}">${esc(r.name)}</a></span><span>${I('window', 15)} <a href="#/cephe/${f.id}">${esc(f.name)}</a></span></div></div>
-        <div class="detail-actions"><button class="btn" data-act="curtainForm" data-id="${id}">${I('edit', 16)} Düzenle</button><button class="btn" data-act="printLabel" data-id="${id}">${I('printer', 16)} Etiket</button>${st.order ? `<a class="btn primary" href="#/siparis/${st.order.id}">${I('clipboard', 16)} ${esc(st.order.code)}</a>` : `<button class="btn primary" data-act="newOrder" data-house="${h.id}" data-preselect="${id}">${I('droplets', 16)} Yıkamaya Gönder</button>`}</div></div>
+        <div class="detail-actions"><button class="btn" data-act="curtainForm" data-id="${id}">${I('edit', 16)} Düzenle</button><button class="btn" data-act="printLabel" data-id="${id}">${I('printer', 16)} Etiket</button>${st.order ? `<a class="btn primary" href="#/siparis/${st.order.id}">${I('clipboard', 16)} ${esc(st.order.code)}</a>` : `<button class="btn primary" data-act="newOrder" data-house="${h.id}" data-preselect="${id}">${I('tag', 16)} ${c.installedAt ? 'Yenileme Teklifi' : 'Teklif Hazırla'}</button>`}</div></div>
       <div class="split">
         <div class="stack">
           <div class="card"><div class="card-head"><h3>Teknik özellikler</h3></div>
             <div class="spec-grid">
               ${spec('curtain', 'Perde türü', esc(c.type))}${spec('layers', 'Kumaş', esc(c.fabric))}${spec('tag', 'Renk', `<span class="row" style="gap:6px"><span class="sw-dot" style="width:14px;height:14px;border-radius:4px;background:${c.color};box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)"></span>${esc(c.colorName)}</span>`)}
               ${spec('ruler', T.flat ? 'Genişlik' : 'Ray genişliği', `${num(c.width)} cm`)}${spec('ruler', 'Boy', `${num(c.height)} cm`)}${spec('move', 'Pile oranı', T.flat ? 'Düz (pilesiz)' : `1 : ${String(c.pleat).replace('.', ',')}`)}
-              ${spec('grid', 'Kumaş eni', T.flat ? `${num(c.width)} cm` : `${num(c.width * c.pleat)} cm`)}${spec('grid', 'Kumaş alanı', `${num(area, 2)} m²`)}${spec('copy', 'Kanat sayısı', c.panels || 1)}
+              ${spec('grid', T.flat ? 'Perde alanı' : 'Kumaş metresi', T.flat ? `${num(C.flatArea(c), 2)} m²` : `${num(meters, 2)} m`)}${spec('grid', 'Kumaş eni', T.flat ? `${num(c.width)} cm` : `${num(c.width * c.pleat)} cm`)}${spec('copy', 'Kanat sayısı', c.panels || 1)}
               ${spec('sliders', 'Montaj', esc(c.mount))}${spec('link', 'Askı tipi', esc(c.hook))}${spec('layers', 'Astar', esc(c.lining))}
-              ${spec('droplets', 'Yıkama talimatı', esc(c.care))}${spec('sparkles', 'Kondisyon', esc(c.condition || 'İyi'))}${spec('calendar', 'Alım tarihi', U.date(c.purchasedAt))}
-              ${spec('refresh', 'Yıkama sayısı', `${c.washCount || 0} kez`)}${spec('history', 'Son yıkama', c.lastWashed ? U.date(c.lastWashed) : '—')}${spec('wallet', 'Tahmini ücret', money(S.washPrice(c)))}
+              ${spec('droplets', 'Bakım talimatı', esc(c.care))}${spec('sparkles', 'Kondisyon', esc(c.condition || 'Yeni'))}${spec('calendar', 'Takılma tarihi', c.installedAt ? U.date(c.installedAt) : 'Henüz takılmadı')}
+              ${spec('shield', 'Garanti', wEnd ? (new Date(wEnd) > new Date() ? `${U.date(wEnd)} tarihine kadar` : 'Garanti bitti') : '—')}${spec('wallet', 'Satış fiyatı', saleItem ? money(saleItem.price) : '—')}${spec('tag', 'Bugünkü fiyatı', money(S.priceWithServices(c, saleItem ? saleItem.services : [])))}
             </div>${c.notes ? `<div class="card-body"><div class="note-box">${I('info', 16)}<span>${esc(c.notes)}</span></div></div>` : ''}</div>
-          <div class="card"><div class="card-head"><h3>Yıkama geçmişi</h3><p>${hist.length} sipariş</p></div>
-            ${hist.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Sipariş</th><th>Tarih</th><th>Durum</th><th>Hizmet</th><th>Teslim alan</th><th class="num">Ücret</th></tr></thead><tbody>
-              ${hist.map((o) => { const it = o.items.find((i) => i.curtainId === id); return `<tr class="link" data-href="#/siparis/${o.id}"><td><strong>${esc(o.code)}</strong></td><td>${U.date(o.pickupAt)}</td><td>${UI.status(o.status, true)}</td><td>Yıkama & ütü${it.services.length ? ' + ' + it.services.map((s) => esc(C.SERVICES[s])).join(', ') : ''}</td><td>${o.deliveredToName ? esc(o.deliveredToName) : '<span class="faint">—</span>'}</td><td class="num">${money(it.price)}</td></tr>`; }).join('')}
-            </tbody></table></div>` : `<div class="card-body">${UI.empty('droplets', 'Henüz yıkanmadı', 'Bu perde için yıkama kaydı yok.')}</div>`}</div>
+          <div class="card"><div class="card-head"><h3>Sipariş geçmişi</h3><p>${hist.length} sipariş</p></div>
+            ${hist.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Sipariş</th><th>Tarih</th><th>Durum</th><th>Kalemler</th><th>Teslim alan</th><th class="num">Tutar</th></tr></thead><tbody>
+              ${hist.map((o) => { const it = o.items.find((i) => i.curtainId === id); return `<tr class="link" data-href="#/siparis/${o.id}"><td><strong>${esc(o.code)}</strong></td><td>${U.date(o.createdAt)}</td><td>${UI.status(o.status, true)}</td><td>Kumaş + dikim${it.services.length ? ' + ' + it.services.map((s) => esc(C.SERVICES[s])).join(', ') : ''}</td><td>${o.deliveredToName ? esc(o.deliveredToName) : '<span class="faint">—</span>'}</td><td class="num">${money(it.price)}</td></tr>`; }).join('')}
+            </tbody></table></div>` : `<div class="card-body">${UI.empty('tag', 'Henüz sipariş yok', 'Bu perde için teklif hazırlanmadı.')}</div>`}</div>
         </div>
         <div class="stack">
           <div class="card"><div class="swatch-hero">${Viz.swatch(c, 96)}<div><strong style="font-size:16px">${esc(c.colorName)}</strong><div class="faint" style="font-size:13px">${esc(c.fabric)}</div><div class="faint mono" style="font-size:12px;margin-top:4px">${esc(c.color)}</div></div></div></div>
           <div class="card" style="overflow:hidden"><a class="facade-viz" href="#/cephe/${f.id}">${Viz.facade(f, S.curtains(f.id), { highlight: id, dims: false })}<span class="dir-badge">${I('window', 14)} ${esc(f.name)}</span></a></div>
-          <div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Ücret hesabı</h3>
-            ${UI.kv('Kumaş alanı', T.flat ? `${num(c.width / 100, 2)} × ${num(c.height / 100, 2)} m` : `${num(c.width / 100, 2)} × ${String(c.pleat).replace('.', ',')} pile × ${num(c.height / 100, 2)} m`)}${UI.kv('Alan', num(area, 2) + ' m²')}${UI.kv('Birim fiyat', money(rate) + ' / m²')}${UI.kv('<strong>Yıkama + ütü</strong>', `<strong>${money(S.washPrice(c))}</strong>`)}</div>
-          <div class="card pad"><h3 style="font-size:15px;margin-bottom:10px">Atölye etiketi</h3>${V.label(c)}<button class="btn block" style="margin-top:10px" data-act="printLabel" data-id="${id}">${I('printer', 16)} Etiketi yazdır</button></div>
+          <div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Fiyat hesabı</h3>
+            ${T.flat
+              ? UI.kv('Ölçü', `${num(c.width / 100, 2)} × ${num(c.height / 100, 2)} m`) + UI.kv('Alan (min. 1 m²)', num(C.flatArea(c), 2) + ' m²') + UI.kv('Birim fiyat', money(rate) + ' / m²')
+              : UI.kv('Kumaş', `${num(c.width / 100, 2)} m ray × ${String(c.pleat).replace('.', ',')} pile = ${num(meters, 2)} m`) + UI.kv('Kumaş fiyatı', money(rate) + ' / m') + UI.kv('Dikim', money(S.prices().sewing) + ' / m')}
+            ${UI.kv('<strong>Perde fiyatı</strong>', `<strong>${money(S.price(c))}</strong>`)}
+            ${C.servicesFor(c).map((k) => UI.kv(`<span class="faint">+ ${esc(C.SERVICES[k])}</span>`, `<span class="faint">${money(C.servicePrice(k, c, S.prices()))}</span>`)).join('')}</div>
+          <div class="card pad"><h3 style="font-size:15px;margin-bottom:10px">Ürün etiketi</h3>${V.label(c)}<button class="btn block" style="margin-top:10px" data-act="printLabel" data-id="${id}">${I('printer', 16)} Etiketi yazdır</button></div>
           <button class="btn ghost danger-text" data-act="deleteCurtain" data-id="${id}">${I('trash', 16)} Perdeyi sil</button>
         </div></div>`;
     return { title: `${c.type} ${c.code}`, crumbs: [['Evler', '#/evler'], [h.title, '#/ev/' + h.id], [r.name, '#/oda/' + r.id], [f.name, '#/cephe/' + f.id], [c.code]], html };
@@ -432,7 +443,7 @@
 
   V.label = (c) => {
     const { room: r, house: h, facade: f } = S.path(c.id);
-    return `<div class="label-print"><div class="lp-shop">${esc(S.shop().name)}</div>${Viz.barcode(c.code, 200, 44)}<div class="lp-code">${esc(c.code)}</div><div class="lp-sub"><strong>${esc(h.title)}</strong><br>${esc(r.name)} · ${esc(f.name)}<br>${esc(c.type)} · ${esc(c.colorName)} · ${UI.dim(c)}<br>${esc(c.care)}</div></div>`;
+    return `<div class="label-print"><div class="lp-shop">${esc(S.shop().name)}</div>${Viz.barcode(c.code, 200, 44)}<div class="lp-code">${esc(c.code)}</div><div class="lp-sub"><strong>${esc(h.title)}</strong><br>${esc(r.name)} · ${esc(f.name)}<br>${esc(c.type)} · ${esc(c.fabric)} · ${esc(c.colorName)}<br>${UI.dim(c)}${C.CURTAIN_TYPES[c.type]?.flat ? '' : ` · pile 1:${String(c.pleat).replace('.', ',')} · ${c.panels || 1} kanat`} · ${esc(c.mount)}</div></div>`;
   };
 
   V.notFound = (t) => ({ title: t, crumbs: [[t]], html: UI.empty('alert', t, 'Kayıt silinmiş ya da bağlantı hatalı olabilir.', `<a class="btn primary" href="#/">Panele dön</a>`) });

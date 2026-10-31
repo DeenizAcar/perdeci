@@ -1,6 +1,7 @@
 /* Perdeci — veri katmanı (localStorage) */
 (function () {
-  const KEY = 'perdeci.db.v3';
+  const KEY = 'perdeci.db.v4';
+  const VERSION = 4;
   let db = null;
   let ix = {};
   const listeners = new Set();
@@ -32,7 +33,8 @@
         const raw = localStorage.getItem(KEY);
         if (raw) db = JSON.parse(raw);
       } catch (e) { db = null; }
-      if (!db || !db.version) { db = C.buildSeed(); save(); }
+      if (!db || db.version !== VERSION) { db = C.buildSeed(); save(); }
+      try { localStorage.removeItem('perdeci.db.v3'); } catch (e) {}
       index();
     },
     reset() { db = C.buildSeed(); commit(); },
@@ -87,20 +89,31 @@
     curtainOrders(curtainId) { return db.orders.filter((o) => o.items.some((i) => i.curtainId === curtainId)).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)); },
     curtainStatus(curtainId) {
       const o = S.activeOrderFor(curtainId);
-      if (!o) return { key: 'evde', label: 'Evde · Asılı', short: 'Evde', color: '#7b8794', icon: 'home' };
+      if (!o) {
+        const c = S.curtain(curtainId);
+        if (c && c.installedAt) return { key: 'takili', label: 'Takılı', short: 'Takılı', color: '#7b8794', icon: 'home' };
+        return { key: 'kayitli', label: 'Siparişi yok', short: 'Kayıtlı', color: '#a0806a', icon: 'ruler' };
+      }
       const st = C.ST[o.status];
-      return { key: o.status, label: o.status === 'planlandi' ? 'Alım bekliyor' : st.label, short: st.short, color: st.color, icon: st.icon, order: o };
+      const labels = { olcu: 'Ölçü bekliyor', teklif: 'Teklifte', tedarik: 'Kumaş tedarikte', uretim: 'Dikimde', hazir: 'Teslime hazır' };
+      return { key: o.status, label: labels[o.status] || st.label, short: st.short, color: st.color, icon: st.icon, order: o };
+    },
+    warrantyEnd(c) {
+      if (!c || !c.installedAt) return null;
+      const d = new Date(c.installedAt); d.setFullYear(d.getFullYear() + (db.shop.warrantyYears || 2));
+      return d.toISOString();
     },
     totals(o) {
       const items = o.items.reduce((s, i) => s + i.price, 0);
       const fees = (o.fees || []).reduce((s, f) => s + f.amount, 0);
       const subtotal = items + fees;
-      const total = o.total ?? Math.max(db.prices.minOrder, subtotal - (o.discount || 0));
+      const total = o.total ?? Math.max(0, subtotal - (o.discount || 0));
       const paid = (o.payments || []).reduce((s, p) => s + p.amount, 0);
       return { items, fees, subtotal, discount: o.discount || 0, total, paid, balance: o.status === 'iptal' ? 0 : Math.max(0, total - paid) };
     },
     area(c) { return C.area(c); },
-    washPrice(c) { return C.washPrice(c, db.prices); },
+    price(c) { return C.price(c, db.prices); },
+    priceWithServices(c, services) { return C.price(c, db.prices) + (services || []).reduce((s, k) => s + C.servicePrice(k, c, db.prices), 0); },
     houseStats(houseId) {
       const rooms = S.rooms(houseId);
       const facades = rooms.flatMap((r) => S.facades(r.id));
@@ -117,9 +130,9 @@
       const hs = S.personHouses(personId);
       const orders = db.orders.filter((o) => hs.some((h) => h.house.id === o.houseId));
       const received = db.orders.filter((o) => o.deliveredTo === personId);
-      const handed = db.orders.filter((o) => o.handedBy === personId);
+      const ordered = db.orders.filter((o) => o.orderedBy === personId && o.status !== 'iptal');
       const balance = hs.filter((h) => h.isPrimary).reduce((s, h) => s + S.houseStats(h.house.id).balance, 0);
-      return { houses: hs.length, orders: orders.length, received: received.length, handed: handed.length, balance, lastReceived: received.sort((a, b) => (a.deliveredAt < b.deliveredAt ? 1 : -1))[0] };
+      return { houses: hs.length, orders: orders.length, received: received.length, ordered: ordered.length, balance, lastReceived: received.sort((a, b) => (a.deliveredAt < b.deliveredAt ? 1 : -1))[0] };
     },
     activity(limit = 30) {
       const ev = [];
@@ -234,8 +247,8 @@
       if (data.id && S.curtain(data.id)) Object.assign(S.curtain(data.id), data);
       else {
         db.counters.curtain++;
-        data.id = 'c_' + U.uid('n').slice(2); data.code = 'PR-' + db.counters.curtain; data.washCount = 0; data.lastWashed = null;
-        data.purchasedAt = data.purchasedAt || new Date().toISOString();
+        data.id = 'c_' + U.uid('n').slice(2); data.code = 'PR-' + db.counters.curtain; data.installedAt = null;
+        data.condition = data.condition || 'Yeni';
         db.curtains.push(data);
         const p = S.path(data.id);
         S.log(`${p.house?.title} · ${p.room?.name}: ${data.type} perde eklendi (${data.code})`, '#/perde/' + data.id, 'curtain');
@@ -255,48 +268,50 @@
       return m;
     },
 
-    buildOrderDraft({ houseId, items, pickupMethod, deliveryMethod, discount }) {
+    buildOrderDraft({ items, measureMethod, deliveryMethod, sokum, discount }) {
       const curtains = items.map((i) => S.curtain(i.curtainId)).filter(Boolean);
       const facadeCount = new Set(curtains.map((c) => c.facadeId)).size;
       const pr = db.prices;
-      const its = items.map((i) => {
+      const its = items.filter((i) => S.curtain(i.curtainId)).map((i) => {
         const c = S.curtain(i.curtainId);
-        const washPrice = C.washPrice(c, pr);
-        const servicePrice = (i.services || []).reduce((s, k) => s + (pr.services[k] || 0), 0);
-        return { curtainId: i.curtainId, wash: true, services: i.services || [], washPrice, servicePrice, price: washPrice + servicePrice };
+        const basePrice = C.price(c, pr);
+        const services = (i.services || []).filter((k) => C.servicesFor(c).includes(k));
+        const servicePrice = services.reduce((s, k) => s + C.servicePrice(k, c, pr), 0);
+        return { curtainId: i.curtainId, services, basePrice, servicePrice, price: basePrice + servicePrice };
       });
       const fees = [];
-      if (pickupMethod === 'adres') fees.push({ label: 'Adresten alım', amount: pr.fees.adresAlim });
-      if (pickupMethod === 'sokum') fees.push({ label: `Söküm (${facadeCount} cephe)`, amount: pr.fees.sokum * facadeCount });
+      if (measureMethod === 'yerinde' && pr.fees.kesif > 0) fees.push({ label: 'Yerinde ölçü / keşif', amount: pr.fees.kesif });
       if (deliveryMethod === 'adres') fees.push({ label: 'Adrese teslim', amount: pr.fees.adresTeslim });
-      if (deliveryMethod === 'montaj') fees.push({ label: `Montaj (${facadeCount} cephe)`, amount: pr.fees.montaj * facadeCount });
+      if (deliveryMethod === 'montaj' && facadeCount) fees.push({ label: `Montaj (${facadeCount} cephe)`, amount: pr.fees.montaj * facadeCount });
+      if (sokum && facadeCount) fees.push({ label: `Eski perde sökümü (${facadeCount} cephe)`, amount: pr.fees.sokum * facadeCount });
       const subtotal = its.reduce((s, i) => s + i.price, 0) + fees.reduce((s, f) => s + f.amount, 0);
-      const disc = Math.max(0, Number(discount) || 0);
-      const total = its.length ? Math.max(pr.minOrder, subtotal - disc) : 0;
-      return { items: its, fees, subtotal, discount: disc, total, facadeCount, minApplied: its.length && subtotal - disc < pr.minOrder };
+      const disc = Math.min(subtotal, Math.max(0, Number(discount) || 0));
+      const total = its.length ? subtotal - disc : 0;
+      return { items: its, fees, subtotal, discount: disc, total, facadeCount };
     },
     createOrder(input) {
       const draft = S.buildOrderDraft(input);
       db.counters.order++;
       const code = `SP-${String(db.counters.order).padStart(4, '0')}`;
       const now = new Date().toISOString();
+      const yerinde = input.measureMethod === 'yerinde';
       const o = {
-        id: U.uid('o'), code, houseId: input.houseId, status: input.pickupMethod === 'dukkan' ? 'atolyede' : 'planlandi',
+        id: U.uid('o'), code, houseId: input.houseId, status: yerinde ? 'olcu' : 'teklif',
         items: draft.items, fees: draft.fees, discount: draft.discount, total: draft.total, payments: [],
-        createdAt: now, pickupAt: input.pickupAt || now, dueAt: input.dueAt, pickupMethod: input.pickupMethod, deliveryMethod: input.deliveryMethod,
-        deliveryCode: String(1000 + Math.floor(Math.random() * 9000)), notes: input.notes || '', history: [],
-        deliveredTo: null, deliveredToName: null, deliveredAt: null, readyAt: null, signature: null, handedBy: input.handedBy || null,
+        createdAt: now, measureMethod: input.measureMethod, measureAt: yerinde ? input.measureAt : null, dueAt: input.dueAt,
+        deliveryMethod: input.deliveryMethod, sokum: !!input.sokum,
+        deliveryCode: String(1000 + Math.floor(Math.random() * 9000)), notes: input.notes || '', history: [], orderedBy: input.orderedBy || null,
+        deliveredTo: null, deliveredToName: null, deliveredAt: null, readyAt: null, approvedAt: null, signature: null,
       };
       const prim = S.primary(input.houseId);
-      if (o.status === 'planlandi') {
-        o.history.push({ status: 'planlandi', at: now, note: `${C.PICKUP[o.pickupMethod]} randevusu oluşturuldu.`, by: db.shop.ownerShort });
-        if (prim) S.sms(prim.personId, `Sayın ${prim.person.name}, ${code} nolu perde alım randevunuz ${U.date(o.pickupAt)} ${U.time(o.pickupAt)} olarak planlandı. ${db.shop.smsSignature}`, o.id, 'randevu');
+      const to = input.orderedBy ? S.person(input.orderedBy) : prim?.person;
+      if (yerinde) {
+        o.history.push({ status: 'olcu', at: now, note: `Ölçü randevusu oluşturuldu${to ? ` (${U.firstName(to.name)} ile görüşüldü)` : ''}.`, by: db.shop.ownerShort });
+        if (to) S.sms(to.id, `Sayın ${to.name}, ${code} ölçü randevunuz ${U.date(o.measureAt)} saat ${U.time(o.measureAt)} olarak planlandı. ${db.shop.smsSignature}`, o.id, 'randevu');
       } else {
-        const who = input.handedBy ? S.person(input.handedBy)?.name : null;
-        o.history.push({ status: 'atolyede', at: now, note: `${o.items.length} parça perde ${who ? who + ' tarafından ' : ''}dükkana getirildi.`, by: db.shop.ownerShort });
-        if (prim) S.sms(prim.personId, `${code}: ${o.items.length} parça perdeniz teslim alındı. Tahmini teslim: ${U.date(o.dueAt)}. ${db.shop.smsSignature}`, o.id, 'alindi');
+        o.history.push({ status: 'teklif', at: now, note: `${C.MEASURE[o.measureMethod]} ile ${o.items.length} parça perde için ${U.money(o.total)} teklif hazırlandı.`, by: db.shop.ownerShort });
+        if (to) S.sms(to.id, `Sayın ${to.name}, ${code} nolu perde teklifiniz hazır: ${U.money(o.total)}. Detay: nazliperde.com/takip ${db.shop.smsSignature}`, o.id, 'teklif');
       }
-      if (input.deposit > 0) o.payments.push({ at: now, amount: Number(input.deposit), method: input.depositMethod || 'Nakit', note: 'Kapora' });
       db.orders.push(o);
       commit();
       return o;
@@ -306,22 +321,39 @@
       o.status = status;
       const now = new Date().toISOString();
       const defaults = {
-        atolyede: `${o.items.length} parça perde teslim alındı.`,
-        yikamada: 'Etiketlendi, yıkama programına alındı.',
-        utude: 'Kurutma tamamlandı, ütü ve bakımda.',
-        hazir: 'Kalite kontrolden geçti, paketlendi.',
+        teklif: `Ölçüler alındı, ${o.items.length} parça perde için ${U.money(S.totals(o).total)} teklif verildi.`,
+        tedarik: 'Teklif onaylandı. Kumaşlar tedarikçiden istendi.',
+        uretim: 'Kumaşlar geldi, kesim ve dikime alındı.',
+        hazir: 'Dikim ve kalite kontrol tamamlandı, paketlendi.',
         iptal: 'Sipariş iptal edildi.',
       };
       o.history.push({ status, at: now, note: note || defaults[status] || '', by: db.shop.ownerShort });
+      const prim = S.primary(o.houseId);
+      const sig = db.shop.smsSignature;
+      if (status === 'teklif') {
+        const to = o.orderedBy ? S.person(o.orderedBy) : prim?.person;
+        if (to) S.sms(to.id, `Sayın ${to.name}, ${o.code} nolu perde teklifiniz hazır: ${U.money(S.totals(o).total)}. Detay: nazliperde.com/takip ${sig}`, o.id, 'teklif');
+      }
+      if (status === 'tedarik' && prim) S.sms(prim.personId, `${o.code}: Siparişiniz onaylandı, kumaşlarınız sipariş edildi. Tahmini teslim: ${U.date(o.dueAt)}. ${sig}`, o.id, 'onay');
       if (status === 'hazir') {
         o.readyAt = now;
         const auth = S.authorized(o.houseId);
         const names = auth.map((m) => U.firstName(m.person.name)).join(', ');
-        auth.forEach((m) => S.sms(m.personId, `${o.code} nolu perdeleriniz teslime hazır. Teslim kodu: ${o.deliveryCode}. Evinizden ${names} teslim alabilir. ${db.shop.smsSignature}`, o.id, 'hazir'));
+        auth.forEach((m) => S.sms(m.personId, o.deliveryMethod === 'dukkan'
+          ? `${o.code} nolu perdeleriniz hazır. Teslim kodu: ${o.deliveryCode}. Evinizden ${names} dükkandan teslim alabilir. ${sig}`
+          : `${o.code} nolu perdeleriniz hazır. ${o.deliveryMethod === 'montaj' ? 'Montaj' : 'Teslimat'} için sizi arayacağız. Teslim kodu: ${o.deliveryCode}. ${sig}`, o.id, 'hazir'));
         o.history[o.history.length - 1].note += ` ${auth.length} yetkiliye SMS gönderildi.`;
       }
       commit();
       return o;
+    },
+    approve(orderId, { personId, deposit, method, dueAt }) {
+      const o = S.order(orderId); if (!o) return;
+      const now = new Date().toISOString();
+      o.orderedBy = personId || o.orderedBy; o.approvedAt = now; if (dueAt) o.dueAt = dueAt;
+      if (deposit > 0) o.payments.push({ at: now, amount: Number(deposit), method: method || 'Nakit', note: 'Kapora' });
+      const who = S.person(o.orderedBy)?.name;
+      return S.setStatus(orderId, 'tedarik', `Teklif ${who ? who + ' tarafından ' : ''}onaylandı${deposit > 0 ? `, ${U.money(deposit)} kapora alındı` : ''}. Kumaşlar tedarikçiden istendi.`);
     },
     deliver(orderId, { personId, signature, payment, note, codeVerified }) {
       const o = S.order(orderId); if (!o) return;
@@ -330,10 +362,11 @@
       const now = new Date().toISOString();
       o.status = 'teslim'; o.deliveredTo = personId; o.deliveredToName = p?.name; o.deliveredAt = now; o.signature = signature || null;
       if (payment && payment.amount > 0) o.payments.push({ at: now, amount: Number(payment.amount), method: payment.method });
-      o.history.push({ status: 'teslim', at: now, note: `${p?.name} (${mem?.role || 'Yetkili'}) teslim aldı.${codeVerified ? ' Teslim kodu doğrulandı.' : ' Kod yerine kimlik kontrolü yapıldı.'}${note ? ' ' + note : ''}`, by: db.shop.ownerShort });
-      o.items.forEach((it) => { const c = S.curtain(it.curtainId); if (c) { c.washCount = (c.washCount || 0) + 1; c.lastWashed = now; } });
+      const how = o.deliveryMethod === 'montaj' ? `${o.sokum ? 'Eski perdeler söküldü, ' : ''}montaj tamamlandı. ` : o.deliveryMethod === 'adres' ? 'Adrese teslim edildi. ' : '';
+      o.history.push({ status: 'teslim', at: now, note: `${how}${p?.name} (${mem?.role || 'Yetkili'}) teslim aldı.${codeVerified ? ' Teslim kodu doğrulandı.' : ' Kod yerine kimlik kontrolü yapıldı.'}${note ? ' ' + note : ''}`, by: o.deliveryMethod === 'dukkan' ? db.shop.ownerShort : 'Hüseyin (Montaj)' });
+      o.items.forEach((it) => { const c = S.curtain(it.curtainId); if (c) { c.installedAt = now; c.condition = 'Yeni'; } });
       const prim = S.primary(o.houseId);
-      if (prim) S.sms(prim.personId, `${o.code} nolu perdeleriniz ${p?.name} tarafından teslim alındı. Bizi tercih ettiğiniz için teşekkürler. ${db.shop.smsSignature}`, o.id, 'teslim');
+      if (prim) S.sms(prim.personId, `${o.code} nolu perdeleriniz ${p?.name} tarafından teslim alındı. ${db.shop.warrantyYears || 2} yıl garantilidir. Bizi tercih ettiğiniz için teşekkürler. ${db.shop.smsSignature}`, o.id, 'teslim');
       commit();
       return o;
     },

@@ -7,24 +7,26 @@
   /* ---------- FİYAT LİSTESİ ---------- */
   V.prices = function () {
     const p = S.prices();
-    const ex = { width: 300, height: 260 };
+    const exOf = (t) => { const T = C.CURTAIN_TYPES[t]; return { type: t, width: 300, height: T.flat ? 160 : 260, pleat: T.flat ? 1 : T.pleats[T.pleats.length - 1] }; };
+    const exText = (t, prices) => { const c = exOf(t); const T = C.CURTAIN_TYPES[t]; return `${T.flat ? '300×160 cm · ' + num(C.flatArea(c), 1) + ' m²' : '300 cm ray · ' + num(C.fabricMeters(c), 1) + ' m kumaş'} → ${money(C.price(c, prices))}`; };
     const html = `
-      <div class="page-head"><div><h1>Fiyat Listesi</h1><p>Yıkama ücreti kumaş alanına göre hesaplanır: pileli perdelerde <strong>ray eni × pile oranı × boy</strong>, düz perdelerde <strong>en × boy</strong>.</p></div>
+      <div class="page-head"><div><h1>Fiyat Listesi</h1><p>Pileli perdelerde fiyat <strong>kumaş metresi × (kumaş fiyatı + dikim)</strong>, düz perdelerde <strong>m² × fiyat</strong> (en az 1 m²) olarak hesaplanır.</p></div>
         <div class="actions"><button class="btn primary" id="psave">${I('check', 16)} Fiyatları Kaydet</button></div></div>
       <div class="split">
         <div class="stack">
-          <div class="card"><div class="card-head"><h3>Perde türü fiyatları</h3><p>₺ / m² · yıkama + ütü dahil</p></div>
-            <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Tür</th><th>Hesap</th><th>Örnek (300×260 cm)</th><th class="num">₺ / m²</th></tr></thead><tbody>
-              ${C.TYPE_LIST.map((t) => { const T = C.CURTAIN_TYPES[t]; const pl = T.flat ? 1 : T.pleats[T.pleats.length - 1]; const area = (ex.width / 100) * (ex.height / 100) * pl; return `<tr><td><div class="cell-main"><span class="room-ic" style="width:34px;height:34px">${I('curtain', 16)}</span><div><strong>${t}</strong><small>${esc(T.desc)}</small></div></div></td><td>${T.flat ? 'En × boy' : `En × pile (1:${String(pl).replace('.', ',')}) × boy`}</td><td class="faint" data-ex="${t}">${num(area, 1)} m² → ${money(area * p.types[t])}</td><td class="num"><input class="input price-input" type="number" min="0" data-type="${t}" value="${p.types[t]}"></td></tr>`; }).join('')}
+          <div class="card"><div class="card-head"><h3>Perde türü fiyatları</h3><p>Pileli: ₺ / metre kumaş · Düz: ₺ / m² (mekanizma dahil)</p></div>
+            <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Tür</th><th>Hesap</th><th>Örnek</th><th class="num">Birim fiyat</th></tr></thead><tbody>
+              ${C.TYPE_LIST.map((t) => { const T = C.CURTAIN_TYPES[t]; const pl = T.pleats[T.pleats.length - 1]; return `<tr><td><div class="cell-main"><span class="room-ic" style="width:34px;height:34px">${I('curtain', 16)}</span><div><strong>${t}</strong><small>${esc(T.desc)}</small></div></div></td><td>${T.flat ? 'En × boy (m²)' : `Ray eni × pile (1:${String(pl).replace('.', ',')})`}</td><td class="faint" data-ex="${t}">${exText(t, p)}</td><td class="num"><div class="input-wrap" style="justify-content:flex-end"><input class="input price-input" type="number" min="0" data-type="${t}" value="${p.types[t]}" style="padding-right:44px"><span class="input-suffix">${T.flat ? '/m²' : '/m'}</span></div></td></tr>`; }).join('')}
+              <tr><td><div class="cell-main"><span class="room-ic" style="width:34px;height:34px">${I('scissors', 16)}</span><div><strong>Dikim</strong><small>Pileli perdelerde kumaş metresi başına</small></div></div></td><td>Kumaş metresi</td><td class="faint">Tül, fon, blackout, kruvaze</td><td class="num"><div class="input-wrap" style="justify-content:flex-end"><input class="input price-input" type="number" min="0" id="sewing" value="${p.sewing}" style="padding-right:44px"><span class="input-suffix">/m</span></div></td></tr>
             </tbody></table></div></div>
           <div class="grid g2">
-            <div class="card"><div class="card-head"><h3>Ek hizmetler</h3><p>Perde başına</p></div><div class="card-body">${Object.entries(C.SERVICES).map(([k, l]) => `<div class="kv"><span>${l}</span><strong><input class="input price-input" type="number" min="0" data-service="${k}" value="${p.services[k]}"></strong></div>`).join('')}</div></div>
-            <div class="card"><div class="card-head"><h3>Lojistik</h3><p>Sipariş başına / cephe başına</p></div><div class="card-body">
-              <div class="kv"><span>Adresten alım</span><strong><input class="input price-input" type="number" min="0" data-fee="adresAlim" value="${p.fees.adresAlim}"></strong></div>
-              <div class="kv"><span>Söküm (cephe başına)</span><strong><input class="input price-input" type="number" min="0" data-fee="sokum" value="${p.fees.sokum}"></strong></div>
+            <div class="card"><div class="card-head"><h3>Ek kalemler</h3><p>Perde başına, birimine göre</p></div><div class="card-body">${Object.entries(C.SERVICES).map(([k, l]) => `<div class="kv"><span>${l} <small class="faint">${C.SERVICE_UNIT_LABEL[C.SERVICE_UNIT[k]]}</small></span><strong><input class="input price-input" type="number" min="0" data-service="${k}" value="${p.services[k]}"></strong></div>`).join('')}</div></div>
+            <div class="card"><div class="card-head"><h3>Montaj ve teslimat</h3><p>Sipariş başına / cephe başına</p></div><div class="card-body">
+              <div class="kv"><span>Yerinde ölçü / keşif <small class="faint">0 = ücretsiz</small></span><strong><input class="input price-input" type="number" min="0" data-fee="kesif" value="${p.fees.kesif}"></strong></div>
+              <div class="kv"><span>Montaj <small class="faint">cephe başına</small></span><strong><input class="input price-input" type="number" min="0" data-fee="montaj" value="${p.fees.montaj}"></strong></div>
+              <div class="kv"><span>Eski perde sökümü <small class="faint">cephe başına</small></span><strong><input class="input price-input" type="number" min="0" data-fee="sokum" value="${p.fees.sokum}"></strong></div>
               <div class="kv"><span>Adrese teslim</span><strong><input class="input price-input" type="number" min="0" data-fee="adresTeslim" value="${p.fees.adresTeslim}"></strong></div>
-              <div class="kv"><span>Montaj (cephe başına)</span><strong><input class="input price-input" type="number" min="0" data-fee="montaj" value="${p.fees.montaj}"></strong></div>
-              <div class="kv"><span>Minimum sipariş tutarı</span><strong><input class="input price-input" type="number" min="0" id="minorder" value="${p.minOrder}"></strong></div></div></div>
+              <div class="kv"><span>Garanti süresi <small class="faint">yıl</small></span><strong><input class="input price-input" type="number" min="0" id="warranty" value="${S.shop().warrantyYears || 2}"></strong></div></div></div>
           </div>
         </div>
         <div class="card" style="position:sticky;top:80px"><div class="card-head"><span class="modal-icon" style="width:34px;height:34px">${I('calculator', 17)}</span><div><h3>Hızlı hesap</h3><p>Müşteriye telefonda fiyat verin</p></div></div>
@@ -33,37 +35,49 @@
             <label class="field third"><span class="field-label">En</span><div class="input-wrap"><input class="input" type="number" id="cw" value="300"><span class="input-suffix">cm</span></div></label>
             <label class="field third"><span class="field-label">Boy</span><div class="input-wrap"><input class="input" type="number" id="ch" value="260"><span class="input-suffix">cm</span></div></label>
             <label class="field third" id="cpw"><span class="field-label">Pile</span><select class="input" id="cp">${[1.5, 2, 2.5, 3].map((x) => `<option value="${x}" ${x === 3 ? 'selected' : ''}>1:${String(x).replace('.', ',')}</option>`).join('')}</select></label>
-            <label class="field"><span class="field-label">Adet</span><input class="input" type="number" id="cn" value="1" min="1"></label>
-            <div class="field"><span class="field-label">Ek hizmet</span><div class="chip-select">${Object.entries(C.SERVICES).map(([k, l]) => `<label class="chip-opt"><input type="checkbox" data-csvc="${k}"><span>${l}</span></label>`).join('')}</div></div>
+            <label class="field half"><span class="field-label">Adet</span><input class="input" type="number" id="cn" value="1" min="1"></label>
+            <label class="field half" style="justify-content:flex-end"><span class="row" style="gap:8px;font-size:13px;color:var(--text-2);height:40px"><input type="checkbox" id="cmontaj" checked style="accent-color:var(--primary)"> Montaj dahil</span></label>
+            <div class="field"><span class="field-label">Ek kalemler</span><div class="chip-select" id="csvcs"></div></div>
           </div>
           <div class="calc-result" style="margin-top:16px"><span id="carea"></span><strong id="cprice"></strong><span id="cnote"></span></div></div></div>
       </div>`;
     const mount = (el) => {
+      const current = () => {
+        const np = JSON.parse(JSON.stringify(S.prices()));
+        el.querySelectorAll('input[data-type]').forEach((x) => { np.types[x.dataset.type] = Math.max(0, +x.value || 0); });
+        el.querySelectorAll('[data-service]').forEach((x) => { np.services[x.dataset.service] = Math.max(0, +x.value || 0); });
+        el.querySelectorAll('[data-fee]').forEach((x) => { np.fees[x.dataset.fee] = Math.max(0, +x.value || 0); });
+        np.sewing = Math.max(0, +el.querySelector('#sewing').value || 0);
+        return np;
+      };
+      let lastType = null;
       const calc = () => {
+        const pr = current();
         const type = el.querySelector('#ctype').value;
         const flat = C.CURTAIN_TYPES[type].flat;
         el.querySelector('#cpw').style.display = flat ? 'none' : '';
         const c = { type, width: +el.querySelector('#cw').value || 0, height: +el.querySelector('#ch').value || 0, pleat: +el.querySelector('#cp').value };
-        const rate = +el.querySelector(`[data-type="${type}"]`).value || 0;
-        const area = C.area(c);
+        if (lastType !== type) {
+          lastType = type;
+          el.querySelector('#csvcs').innerHTML = C.servicesFor(c).map((k) => `<label class="chip-opt"><input type="checkbox" data-csvc="${k}"><span>${C.SERVICES[k]}</span></label>`).join('');
+          el.querySelectorAll('[data-csvc]').forEach((x) => x.addEventListener('change', calc));
+        }
         const n = Math.max(1, +el.querySelector('#cn').value || 1);
-        const svc = [...el.querySelectorAll('[data-csvc]:checked')].reduce((s, x) => s + (+el.querySelector(`[data-service="${x.dataset.csvc}"]`).value || 0), 0);
-        const total = (Math.round((area * rate) / 5) * 5 + svc) * n;
-        el.querySelector('#carea').textContent = `${num(area, 2)} m² × ${money(rate)}${n > 1 ? ` × ${n} adet` : ''}`;
+        const base = C.price(c, pr);
+        const svc = [...el.querySelectorAll('[data-csvc]:checked')].reduce((s, x) => s + C.servicePrice(x.dataset.csvc, c, pr), 0);
+        const montaj = el.querySelector('#cmontaj').checked ? pr.fees.montaj : 0;
+        const total = (base + svc) * n + montaj;
+        el.querySelector('#carea').textContent = flat ? `${num(C.flatArea(c), 2)} m² × ${money(pr.types[type])}${n > 1 ? ` × ${n} adet` : ''}` : `${num(C.fabricMeters(c), 2)} m kumaş × (${money(pr.types[type])} + ${money(pr.sewing)} dikim)${n > 1 ? ` × ${n} adet` : ''}`;
         el.querySelector('#cprice').textContent = money(total);
-        el.querySelector('#cnote').textContent = total < (+el.querySelector('#minorder').value || 0) ? `Minimum sipariş tutarı ${money(+el.querySelector('#minorder').value)} uygulanır` : 'Yıkama + ütü dahil';
-        C.TYPE_LIST.forEach((t) => { const T = C.CURTAIN_TYPES[t]; const pl = T.flat ? 1 : T.pleats[T.pleats.length - 1]; const a = 3 * 2.6 * pl; el.querySelector(`[data-ex="${t}"]`).textContent = `${num(a, 1)} m² → ${money(a * (+el.querySelector(`[data-type="${t}"]`).value || 0))}`; });
+        el.querySelector('#cnote').textContent = [svc ? `${money(svc * n)} ek kalem` : '', montaj ? `${money(montaj)} montaj` : ''].filter(Boolean).join(' · ') || 'Kumaş, dikim ve mekanizma dahil';
+        C.TYPE_LIST.forEach((t) => { el.querySelector(`[data-ex="${t}"]`).textContent = exText(t, pr); });
       };
       el.querySelectorAll('input, select').forEach((x) => x.addEventListener('input', calc));
       calc();
       el.querySelector('#psave').addEventListener('click', () => {
-        const np = JSON.parse(JSON.stringify(S.prices()));
-        el.querySelectorAll('[data-type]').forEach((x) => { if (x.tagName === 'INPUT') np.types[x.dataset.type] = Math.max(0, +x.value || 0); });
-        el.querySelectorAll('[data-service]').forEach((x) => { np.services[x.dataset.service] = Math.max(0, +x.value || 0); });
-        el.querySelectorAll('[data-fee]').forEach((x) => { np.fees[x.dataset.fee] = Math.max(0, +x.value || 0); });
-        np.minOrder = Math.max(0, +el.querySelector('#minorder').value || 0);
-        S.savePrices(np);
-        UI.toast('Fiyat listesi kaydedildi', 'ok', 'Yeni siparişlerde bu fiyatlar kullanılacak.');
+        S.savePrices(current());
+        S.saveShop({ warrantyYears: Math.max(0, +el.querySelector('#warranty').value || 0) });
+        UI.toast('Fiyat listesi kaydedildi', 'ok', 'Yeni tekliflerde bu fiyatlar kullanılacak.');
       });
     };
     return { title: 'Fiyat Listesi', crumbs: [['Fiyat Listesi']], html, mount };
@@ -77,12 +91,15 @@
     const pays = orders.flatMap((o) => o.payments.map((p) => ({ ...p, o })));
     const yearRev = sum(pays.filter((p) => new Date(p.at) >= yearAgo), (p) => p.amount);
     const delivered = orders.filter((o) => o.status === 'teslim');
-    const turn = delivered.map((o) => { const a = o.history.find((x) => x.status === 'atolyede'); const r = o.history.find((x) => x.status === 'hazir'); return a && r ? (new Date(r.at) - new Date(a.at)) / 864e5 : null; }).filter((x) => x !== null);
+    const turn = delivered.map((o) => { const a = o.history.find((x) => x.status === 'tedarik'); const r = o.history.find((x) => x.status === 'teslim'); return a && r ? (new Date(r.at) - new Date(a.at)) / 864e5 : null; }).filter((x) => x !== null);
     const avgTurn = turn.length ? sum(turn, (x) => x) / turn.length : 0;
     const onTime = delivered.filter((o) => o.readyAt && new Date(o.readyAt) <= new Date(new Date(o.dueAt).getTime() + 864e5)).length;
     const onTimePct = delivered.length ? Math.round((onTime / delivered.length) * 100) : 0;
-    const washedArea = sum(delivered.flatMap((o) => o.items), (i) => { const c = S.curtain(i.curtainId); return c ? C.area(c) : 0; });
-    const avgOrder = orders.length ? sum(orders, (o) => S.totals(o).total) / orders.length : 0;
+    const soldMeters = sum(delivered.flatMap((o) => o.items), (i) => { const c = S.curtain(i.curtainId); return c ? C.fabricMeters(c) : 0; });
+    const avgOrder = delivered.length ? sum(delivered, (o) => S.totals(o).total) / delivered.length : 0;
+    const quoted = S.orders().filter((o) => o.history.some((x) => x.status === 'teklif'));
+    const decided = quoted.filter((o) => o.status === 'iptal' || o.approvedAt);
+    const winRate = decided.length ? Math.round((decided.filter((o) => o.approvedAt).length / decided.length) * 100) : 0;
 
     const months = [];
     for (let i = 11; i >= 0; i--) {
@@ -91,7 +108,7 @@
     }
     const group = (arr, keyFn, valFn) => { const m = {}; arr.forEach((x) => { const k = keyFn(x); if (k) m[k] = (m[k] || 0) + valFn(x); }); return Object.entries(m).sort((a, b) => b[1] - a[1]); };
     const byDistrict = group(orders, (o) => S.house(o.houseId)?.district, () => 1).slice(0, 8).map(([k, v]) => ({ label: k, value: v, tip: `${k}: ${v} sipariş` }));
-    const byType = group(orders.flatMap((o) => o.items), (i) => S.curtain(i.curtainId)?.type, (i) => i.price).map(([k, v]) => ({ label: k, value: v }));
+    const byType = group(delivered.flatMap((o) => o.items), (i) => S.curtain(i.curtainId)?.type, (i) => i.price).map(([k, v]) => ({ label: k, value: v }));
     const byMethod = group(pays, (p) => p.method, (p) => p.amount).map(([k, v]) => ({ label: k, value: v }));
     const byRole = group(delivered, (o) => { const m = S.house(o.houseId)?.members.find((x) => x.personId === o.deliveredTo); return m?.role || (o.deliveredTo ? 'Diğer' : null); }, () => 1).map(([k, v]) => ({ label: k, value: v, tip: `${k}: ${v} teslim` }));
     const top = S.houses().map((h) => ({ h, st: S.houseStats(h.id) })).sort((a, b) => b.st.spent - a.st.spent).slice(0, 10);
@@ -102,10 +119,10 @@
         <div class="actions"><button class="btn" data-act="exportCsv">${I('download', 16)} CSV indir</button></div></div>
       <div class="grid g5">
         ${kpi('wallet', 'Yıllık tahsilat', money(yearRev), 'Son 365 gün')}
-        ${kpi('clipboard', 'Sipariş', num(orders.length), `Ortalama ${money(avgOrder)}`)}
-        ${kpi('clock', 'Ortalama işlem süresi', `${num(avgTurn, 1)} gün`, 'Teslim alındıktan hazıra')}
-        ${kpi('check-circle', 'Zamanında hazır', `%${onTimePct}`, `${onTime} / ${delivered.length} sipariş`)}
-        ${kpi('droplets', 'Yıkanan kumaş', `${num(washedArea / 1000, 1)} B m²`, `${num(sum(delivered, (o) => o.items.length))} parça perde`)}
+        ${kpi('clipboard', 'Tamamlanan satış', num(delivered.length), `Ortalama ${money(avgOrder)}`)}
+        ${kpi('tag', 'Teklif dönüşümü', `%${winRate}`, `${decided.filter((o) => o.approvedAt).length} / ${decided.length} teklif onaylandı`)}
+        ${kpi('clock', 'Ortalama teslim süresi', `${num(avgTurn, 1)} gün`, `Onaydan teslime · zamanında %${onTimePct}`)}
+        ${kpi('scissors', 'Satılan kumaş', `${num(soldMeters, 0)} m`, `${num(sum(delivered, (o) => o.items.length))} parça perde takıldı`)}
       </div>
       <div class="card" style="margin-top:18px"><div class="card-head"><h3>Aylık tahsilat</h3><p>₺ · son 12 ay</p></div><div class="card-body">${Viz.columns(months, { height: 230, hlLast: true, tipFmt: (d) => `${d.full}: ${money(d.value)}` })}</div></div>
       <div class="grid g2" style="margin-top:18px">
@@ -165,9 +182,9 @@
     const html = `<div class="login">
       <div class="login-art">
         <div class="stage" id="stage"><div class="sheer"></div><div class="rod"></div><div class="drape l"></div><div class="drape r"></div></div>
-        <div class="brand" style="position:relative;z-index:2;padding:0"><div class="brand-mark">${I('curtain', 22)}</div><div><div class="brand-name">Perdeci</div><div class="brand-sub" style="color:#a9c2bc">Perde yıkama yönetim paneli</div></div></div>
+        <div class="brand" style="position:relative;z-index:2;padding:0"><div class="brand-mark">${I('curtain', 22)}</div><div><div class="brand-name">Perdeci</div><div class="brand-sub" style="color:#a9c2bc">Perde satış & montaj yönetim paneli</div></div></div>
         <h2>Her evin her perdesi, <em>tek ekranda.</em></h2>
-        <p>Evleri, odaları, cepheleri ve perdeleri kaydedin. Yıkamadan teslime tüm süreci takip edin; evdeki her yetkili kişi teslim kodu ile perdesini alsın.</p>
+        <p>Evleri, odaları, cepheleri ve takılan perdeleri kaydedin. Ölçüden teklife, dikimden montaja tüm süreci takip edin; evdeki her yetkili kişi teslim kodu ile perdesini alsın.</p>
         <div class="login-feats"><div>${I('layers', 16)} Ev › Oda › Cephe › Perde</div><div>${I('shield', 16)} Teslim yetkilileri</div><div>${I('message', 16)} Otomatik SMS</div></div>
       </div>
       <div class="login-form">
@@ -217,7 +234,8 @@
           <div class="card-body" style="border-top:1px solid var(--border)">
             ${o.status === 'hazir' ? `<div class="info-box" style="margin-bottom:12px">${I('package', 18)}<div><strong>Perdeleriniz hazır!</strong> Teslim kodu SMS ile gönderildi. Evinizden ${auth.map((m) => esc(U.firstName(m.person.name))).join(', ')} dükkana gelip kodu söyleyerek teslim alabilir.</div></div>` : ''}
             ${o.status === 'teslim' ? `<div class="info-box" style="margin-bottom:12px">${I('check-circle', 18)}<div>Perdeleriniz <strong>${U.dt(o.deliveredAt)}</strong> tarihinde <strong>${esc(U.firstName(o.deliveredToName))}</strong> tarafından teslim alındı.</div></div>` : ''}
-            ${UI.kv('Teslim alındı', U.dt(o.history.find((x) => x.status === 'atolyede')?.at || o.pickupAt), 'store')}${UI.kv('Planlanan teslim', U.date(o.dueAt), 'calendar')}${UI.kv('Tutar', money(S.totals(o).total), 'wallet')}${UI.kv('Kalan ödeme', S.totals(o).balance ? money(S.totals(o).balance) : 'Ödendi', 'check')}
+            ${o.status === 'teklif' ? `<div class="info-box" style="margin-bottom:12px">${I('tag', 18)}<div><strong>Teklifiniz hazır:</strong> ${money(S.totals(o).total)}. Onaylamak veya kumaş değiştirmek için ${esc(S.shop().phone)} numarasından bize ulaşın.</div></div>` : ''}
+            ${UI.kv('Sipariş tarihi', U.date(o.createdAt), 'calendar')}${o.measureAt ? UI.kv('Ölçü randevusu', U.dt(o.measureAt), 'ruler') : ''}${UI.kv(o.deliveryMethod === 'montaj' ? 'Planlanan montaj' : 'Planlanan teslim', U.date(o.dueAt), 'package')}${UI.kv('Tutar', money(S.totals(o).total), 'wallet')}${UI.kv('Kalan ödeme', S.totals(o).balance ? money(S.totals(o).balance) : 'Ödendi', 'check')}
             <div class="row wrap" style="margin-top:12px;gap:6px">${o.items.slice(0, 12).map((i) => { const c = S.curtain(i.curtainId); return c ? `<span class="mini-curtain" style="--sw:${c.color}"><i></i>${esc(S.path(c.id).room?.name || '')} · ${esc(c.type)}</span>` : ''; }).join('')}${o.items.length > 12 ? `<span class="chip">+${o.items.length - 12}</span>` : ''}</div>
           </div></div>
           <p class="faint" style="text-align:center;margin-top:14px;font-size:13px">Sorunuz mu var? ${esc(shop.phone)} · ${esc(shop.address)}</p>`;

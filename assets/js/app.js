@@ -106,7 +106,7 @@
   A.quickAdd = () => {
     UI.modal({
       title: 'Hızlı ekle', size: 'sm', icon: 'plus',
-      body: `<div class="stack" style="gap:8px">${[['newOrder', 'clipboard', 'Yeni sipariş', 'Perdeleri yıkamaya al'], ['houseForm', 'home', 'Yeni ev', 'Adres, oda ve perdeleri kaydet'], ['personForm', 'user-plus', 'Yeni kişi', 'Ev sahibi, aile üyesi, yardımcı…'], ['smsForm', 'message', 'SMS gönder', 'Müşteriye bilgi mesajı']].map(([a, ic, t, s]) => `<button class="pal-item" style="border:1px solid var(--border);background:var(--surface);width:100%;text-align:left" data-q="${a}"><span class="pi-ic">${I(ic, 16)}</span><div><strong>${t}</strong><small>${s}</small></div></button>`).join('')}</div>`,
+      body: `<div class="stack" style="gap:8px">${[['newOrder', 'clipboard', 'Yeni sipariş', 'Ölçü randevusu veya teklif'], ['houseForm', 'home', 'Yeni ev', 'Adres, oda ve perdeleri kaydet'], ['personForm', 'user-plus', 'Yeni kişi', 'Ev sahibi, aile üyesi, yardımcı…'], ['smsForm', 'message', 'SMS gönder', 'Müşteriye bilgi mesajı']].map(([a, ic, t, s]) => `<button class="pal-item" style="border:1px solid var(--border);background:var(--surface);width:100%;text-align:left" data-q="${a}"><span class="pi-ic">${I(ic, 16)}</span><div><strong>${t}</strong><small>${s}</small></div></button>`).join('')}</div>`,
       onMount: (el, api) => el.querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => { api.close(); setTimeout(() => A[b.dataset.q]({}), 150); })),
     });
   };
@@ -173,7 +173,7 @@
       ...(!h ? [{ name: 'primary', label: 'Ev sahibi (birincil kişi)', type: 'select', placeholder: '— Sonra eklerim —', options: S.people().slice().sort((a, b) => a.name.localeCompare(b.name, 'tr')).map((p) => ({ value: p.id, label: p.name })) }, { name: 'autoRooms', label: 'Oda düzenine göre odaları otomatik oluştur', type: 'toggle', value: true, hint: 'Seçtiğiniz düzene göre boş odalar eklenir' }] : []),
     ];
     UI.formModal({
-      title: h ? 'Evi düzenle' : 'Yeni ev', subtitle: h ? h.code : 'Perdelerini yıkadığınız yeni bir adres ekleyin', icon: 'home', size: 'lg', fields,
+      title: h ? 'Evi düzenle' : 'Yeni ev', subtitle: h ? h.code : 'Perde satacağınız ya da ölçü alacağınız yeni bir adres ekleyin', icon: 'home', size: 'lg', fields,
       values: h || { type: 'Daire', layout: '3+1', city: 'İstanbul', color: '#1e5b55', tags: [] },
       submit: h ? 'Kaydet' : 'Evi oluştur',
       danger: h ? { label: 'Evi sil', onClick: async (api) => { if (await UI.confirm({ title: 'Ev silinsin mi?', text: `<strong>${esc(h.title)}</strong> ile birlikte tüm odaları, cepheleri, perdeleri ve siparişleri silinecek. Bu işlem geri alınamaz.`, ok: 'Evi sil', danger: true })) { api.close(); S.deleteHouse(h.id); UI.toast('Ev silindi', 'ok'); location.hash = '#/evler'; } } } : null,
@@ -292,7 +292,7 @@
       onMount: (el) => { const n = el.querySelector('[name=name]'); const t = el.querySelector('[name=type]'); n.addEventListener('input', () => { if (C.ROOM_TYPES[n.value]) t.value = n.value; }); },
     });
   };
-  A.facadeForm = ({ id, room } = {}) => {
+  A.facadeForm = ({ id, room, onSaved } = {}) => {
     const f = id ? S.facade(id) : null;
     const rid = f ? f.roomId : room;
     const fields = [
@@ -307,10 +307,10 @@
       title: f ? 'Cepheyi düzenle' : 'Yeni cephe', subtitle: `${S.house(S.room(rid)?.houseId)?.title} · ${S.room(rid)?.name}`, icon: 'window', size: 'lg', fields,
       values: f || { opening: 'Pencere', direction: 'Güney', width: 240, height: 260 }, submit: f ? 'Kaydet' : 'Cepheyi ekle',
       danger: f ? { label: 'Cepheyi sil', onClick: async (api) => { if (await UI.confirm({ title: 'Cephe silinsin mi?', text: 'Bu cephedeki tüm perdeler de silinecek.', danger: true, ok: 'Sil' })) { api.close(); S.deleteFacade(f.id); UI.toast('Cephe silindi', 'ok'); location.hash = '#/oda/' + rid; } } } : null,
-      onSubmit: (v) => { if (v.width <= 0 || v.height <= 0) { UI.toast('Ölçüler sıfırdan büyük olmalı', 'err'); return false; } if (f) { S.saveFacade({ ...f, ...v }); UI.toast('Cephe güncellendi', 'ok'); } else { const nf = S.saveFacade({ ...v, roomId: rid }); UI.toast('Cephe eklendi', 'ok', 'Şimdi perdeleri ekleyin.'); location.hash = '#/cephe/' + nf.id; setTimeout(() => A.curtainForm({ facade: nf.id }), 250); } },
+      onSubmit: (v) => { if (v.width <= 0 || v.height <= 0) { UI.toast('Ölçüler sıfırdan büyük olmalı', 'err'); return false; } if (f) { S.saveFacade({ ...f, ...v }); UI.toast('Cephe güncellendi', 'ok'); } else { const nf = S.saveFacade({ ...v, roomId: rid }); UI.toast('Cephe eklendi', 'ok', 'Şimdi perdeleri ekleyin.'); if (onSaved) { onSaved(nf); return; } location.hash = '#/cephe/' + nf.id; setTimeout(() => A.curtainForm({ facade: nf.id }), 250); } },
     });
   };
-  A.curtainForm = ({ id, facade } = {}) => {
+  A.curtainForm = ({ id, facade, onSaved } = {}) => {
     const c = id ? S.curtain(id) : null;
     const fid = c ? c.facadeId : facade;
     const fac = S.facade(fid);
@@ -327,21 +327,21 @@
       { name: 'panels', label: 'Kanat', type: 'number', col: 'third', min: 1 },
       { name: 'mount', label: 'Montaj', type: 'select', options: C.MOUNTS, col: 'third' },
       { name: 'hook', label: 'Askı tipi', type: 'select', options: C.HOOKS, col: 'third' },
-      { section: 'Bakım' },
+      { section: 'Detay' },
       { name: 'lining', label: 'Astar', type: 'select', options: C.LININGS, col: 'third' },
       { name: 'condition', label: 'Kondisyon', type: 'select', options: C.CONDITIONS, col: 'third' },
-      { name: 'care', label: 'Yıkama talimatı', col: 'third' },
+      { name: 'care', label: 'Bakım talimatı', col: 'third' },
       { name: 'notes', label: 'Not', type: 'textarea', rows: 2 },
     ];
     const T0 = C.CURTAIN_TYPES[defType];
-    const values = c || { type: defType, fabric: T0.fabrics[0], colorName: 'Kırık Beyaz', width: fac?.width || 200, height: (fac?.height || 260) - 2, pleat: 3, panels: 1, mount: 'Ray', hook: 'Kanca', lining: 'Astarsız', condition: 'Çok İyi', care: T0.care };
+    const values = c || { type: defType, fabric: T0.fabrics[0], colorName: 'Kırık Beyaz', width: fac?.width || 200, height: (fac?.height || 260) - 2, pleat: 3, panels: 1, mount: 'Ray', hook: 'Kanca', lining: 'Astarsız', condition: 'Yeni', care: T0.care };
     UI.formModal({
       title: c ? 'Perdeyi düzenle' : 'Yeni perde', subtitle: fac ? `${S.room(fac.roomId)?.name} · ${fac.name} · ${fac.width}×${fac.height} cm` : '', icon: 'curtain', size: 'lg', fields, values, submit: c ? 'Kaydet' : 'Perdeyi ekle',
       onSubmit: (v) => {
         v.color = C.colorHex(v.colorName);
         if (!v.colorName) { UI.toast('Bir renk seçin', 'err'); return false; }
         if (c) { S.saveCurtain({ ...c, ...v }); UI.toast('Perde güncellendi', 'ok'); }
-        else { const nc = S.saveCurtain({ ...v, facadeId: fid }); UI.toast(`${nc.code} eklendi`, 'ok', `${nc.type} · ${nc.colorName}`); }
+        else { const nc = S.saveCurtain({ ...v, facadeId: fid }); UI.toast(`${nc.code} eklendi`, 'ok', `${nc.type} · ${nc.colorName} · ${money(S.price(nc))}`); onSaved && onSaved(nc); }
       },
       onMount: (el) => {
         const type = el.querySelector('[name=type]'), fabric = el.querySelector('[name=fabric]'), pleat = el.querySelector('[name=pleat]'), care = el.querySelector('[name=care]'), mount = el.querySelector('[name=mount]'), hook = el.querySelector('[name=hook]'), panels = el.querySelector('[name=panels]'), height = el.querySelector('[name=height]');
@@ -372,67 +372,101 @@
   A.orderWizard = function ({ houseId, preselect, order }) {
     const now = new Date();
     const tomorrow = new Date(now.getTime() + 864e5); tomorrow.setHours(10, 0, 0, 0);
-    const due = new Date(now.getTime() + 4 * 864e5); due.setHours(17, 0, 0, 0);
-    const st = {
-      step: order ? 2 : houseId ? 2 : 1, houseId: order ? order.houseId : houseId || null, q: '',
-      sel: new Map(order ? order.items.map((i) => [i.curtainId, [...i.services]]) : (preselect || []).map((id) => [id, []])),
-      pickupMethod: 'dukkan', pickupAt: U.toLocalInput(tomorrow.toISOString()), handedBy: '', deliveryMethod: 'dukkan', dueAt: U.toLocalInput(due.toISOString()),
-      discount: 0, deposit: 0, depositMethod: 'Nakit', notes: '',
+    const due = new Date(now.getTime() + 12 * 864e5); due.setHours(14, 0, 0, 0);
+    const suggest = (c) => {
+      if (!c) return [];
+      const s = [];
+      if (/Motorlu/.test(c.mount)) s.push('motor');
+      if (C.CURTAIN_TYPES[c.type]?.flat) return s;
+      if (/Ray/.test(c.mount)) s.push('ray');
+      if (/Korniş|Boru/.test(c.mount)) s.push('kornis');
+      if (c.lining === 'Astarlı' || c.lining === 'Termal Astar') s.push('astar');
+      if (c.hook === 'Kurşun Etek') s.push('kursun');
+      return s;
     };
-    const steps = order ? [[2, 'Perdeler']] : [[1, 'Ev'], [2, 'Perdeler'], [3, 'Teslimat & ödeme']];
-    const draft = () => S.buildOrderDraft({ houseId: st.houseId, items: [...st.sel].map(([curtainId, services]) => ({ curtainId, services })), pickupMethod: order ? order.pickupMethod : st.pickupMethod, deliveryMethod: order ? order.deliveryMethod : st.deliveryMethod, discount: order ? order.discount : st.discount });
+    const initHouse = order ? order.houseId : houseId || null;
+    const st = {
+      step: order ? 2 : houseId ? 2 : 1, houseId: initHouse, q: '',
+      sel: new Map(order ? order.items.map((i) => [i.curtainId, [...i.services]]) : (preselect || []).filter(Boolean).map((id) => [id, suggest(S.curtain(id))])),
+      measureMethod: 'yerinde', measureAt: U.toLocalInput(tomorrow.toISOString()), orderedBy: initHouse ? (S.primary(initHouse)?.personId || '') : '',
+      deliveryMethod: 'montaj', sokum: false, dueAt: U.toLocalInput(due.toISOString()), discount: 0, notes: '',
+    };
+    const steps = order ? [[2, 'Perdeler']] : [[1, 'Ev'], [2, 'Perdeler'], [3, 'Ölçü & teslimat']];
+    const items = () => [...st.sel].map(([curtainId, services]) => ({ curtainId, services }));
+    const draft = () => (order
+      ? S.buildOrderDraft({ items: items(), measureMethod: order.measureMethod, deliveryMethod: order.deliveryMethod, sokum: order.sokum, discount: order.discount })
+      : S.buildOrderDraft({ items: items(), measureMethod: st.measureMethod, deliveryMethod: st.deliveryMethod, sokum: st.sokum, discount: st.discount }));
+    const busy = (cid) => { const o = S.activeOrderFor(cid); return o && (!order || o.id !== order.id) ? o : null; };
 
     const summary = () => {
       const d = draft();
-      const area = sum([...st.sel.keys()], (id) => { const c = S.curtain(id); return c ? C.area(c) : 0; });
-      return `<div class="card pad" style="background:var(--surface-2)"><div class="faint" style="font-size:12px;font-weight:700;letter-spacing:.06em;margin-bottom:8px">ÖZET</div>
-        ${st.houseId ? UI.kv('Ev', esc(S.house(st.houseId).title), 'home') : ''}${UI.kv('Perde', `${st.sel.size} parça`, 'curtain')}${UI.kv('Kumaş', num(area, 1) + ' m²', 'grid')}${UI.kv('Yıkama + hizmet', money(sum(d.items, (i) => i.price)))}
+      const meters = sum([...st.sel.keys()], (id) => { const c = S.curtain(id); return c ? C.fabricMeters(c) : 0; });
+      return `<div class="card pad" style="background:var(--surface-2)"><div class="faint" style="font-size:12px;font-weight:700;letter-spacing:.06em;margin-bottom:8px">TEKLİF ÖZETİ</div>
+        ${st.houseId ? UI.kv('Ev', esc(S.house(st.houseId).title), 'home') : ''}${UI.kv('Perde', `${st.sel.size} parça`, 'curtain')}${meters ? UI.kv('Pileli kumaş', num(meters, 1) + ' m', 'grid') : ''}
+        ${UI.kv('Perdeler', money(sum(d.items, (i) => i.basePrice)))}${sum(d.items, (i) => i.servicePrice) ? UI.kv('Ray, korniş, astar…', money(sum(d.items, (i) => i.servicePrice))) : ''}
         ${d.fees.map((f) => UI.kv(esc(f.label), money(f.amount))).join('')}${d.discount ? UI.kv('İndirim', '−' + money(d.discount)) : ''}
-        ${UI.kv('<strong>Toplam</strong>', `<strong style="font-size:18px">${money(d.total)}</strong>`)}${d.minApplied ? `<small class="faint">Minimum sipariş tutarı (${money(S.prices().minOrder)}) uygulandı.</small>` : ''}</div>`;
+        ${UI.kv('<strong>Toplam</strong>', `<strong style="font-size:18px">${money(d.total)}</strong>`)}
+        <small class="faint">Kapora teklif onaylanınca alınır.</small></div>`;
+    };
+
+    const curtainRow = (c, f) => {
+      const b = busy(c.id); const on = st.sel.has(c.id);
+      const tag = b ? `<span style="font-size:12px;color:var(--warn)">${esc(b.code)} · ${esc(C.ST[b.status].label)}</span>` : c.installedAt ? `<span class="chip" style="height:20px;font-size:11px">${I('refresh', 11)} Yenileme · ${U.date(c.installedAt)}</span>` : `<span class="chip ok" style="height:20px;font-size:11px">Yeni perde</span>`;
+      const svcs = C.servicesFor(c);
+      const price = on ? S.priceWithServices(c, st.sel.get(c.id)) : S.price(c);
+      return `<div class="check-item" style="border-radius:0;border-width:1px 0 0;align-items:flex-start;${b ? 'opacity:.55' : ''}"><input type="checkbox" data-cur="${c.id}" ${on ? 'checked' : ''} ${b ? 'disabled' : ''} style="margin-top:4px">${Viz.swatch(c, 30)}
+        <div style="min-width:0;flex:1"><div class="row wrap" style="gap:6px"><strong style="font-size:13px">${esc(c.type)} · ${esc(c.fabric)}</strong>${tag}</div>
+          <span class="faint" style="font-size:12px">${esc(c.code)} · ${esc(c.colorName)} · ${UI.dim(c)}${C.CURTAIN_TYPES[c.type].flat ? ` · ${num(C.flatArea(c), 1)} m²` : ` · ${num(C.fabricMeters(c), 1)} m kumaş`}</span>
+          ${on && svcs.length ? `<div class="chip-select" style="margin-top:6px">${svcs.map((k) => `<label class="chip-opt"><input type="checkbox" data-svc="${c.id}" value="${k}" ${st.sel.get(c.id).includes(k) ? 'checked' : ''}><span style="height:24px;font-size:11.5px;padding:0 9px">+ ${esc(C.SERVICES[k])} · ${money(C.servicePrice(k, c, S.prices()))}</span></label>`).join('')}</div>` : ''}</div>
+        <strong class="mono" style="font-size:13px;${on ? '' : 'color:var(--text-3)'}">${money(price)}</strong></div>`;
     };
 
     const body = () => {
       const head = `<div class="row" style="gap:6px;margin-bottom:16px">${steps.map(([n, l], i) => `<span class="chip ${st.step === n ? 'ok' : ''}" style="${st.step > n ? 'opacity:.7' : ''}">${st.step > n ? I('check', 13) : `<strong>${i + 1}</strong>`} ${l}</span>${i < steps.length - 1 ? I('chevron-right', 14, 'faint') : ''}`).join('')}</div>`;
       if (st.step === 1) {
         const list = S.houses().filter((h) => U.match(st.q, h.title, h.district, h.neighborhood, h.code, S.members(h.id).map((m) => m.person.name + ' ' + m.person.phone).join(' ')));
-        return head + `<div class="input-wrap" style="margin-bottom:12px">${I('search', 16, 'input-ic')}<input class="input has-ic" id="wq" placeholder="Ev, kişi veya telefon ara…" value="${esc(st.q)}" autofocus></div>
-          <div class="grid g2" id="wlist">${list.map((h) => { const hs = S.houseStats(h.id); return `<button class="pick ${st.houseId === h.id ? 'on' : ''}" data-house="${h.id}" ${hs.active ? 'data-busy="1"' : ''}><span class="room-ic" style="background:${h.color};color:#fff">${UI.houseIcon(h.type, 18)}</span><div style="min-width:0"><strong>${esc(h.title)}</strong><small>${esc(h.neighborhood)}, ${esc(h.district)} · ${hs.curtains} perde${hs.active ? ` · <span style="color:var(--warn)">aktif sipariş var</span>` : ''}</small></div></button>`; }).join('')}</div>`;
+        return head + `<div class="row" style="gap:8px;margin-bottom:12px"><div class="input-wrap" style="flex:1">${I('search', 16, 'input-ic')}<input class="input has-ic" id="wq" placeholder="Ev, kişi veya telefon ara…" value="${esc(st.q)}" autofocus></div><button class="btn" id="wnewhouse">${I('plus', 16)} Yeni ev</button></div>
+          <div class="grid g2" id="wlist">${list.map((h) => { const hs = S.houseStats(h.id); return `<button class="pick ${st.houseId === h.id ? 'on' : ''}" data-house="${h.id}" ${hs.active ? 'data-busy="1"' : ''}><span class="room-ic" style="background:${h.color};color:#fff">${UI.houseIcon(h.type, 18)}</span><div style="min-width:0"><strong>${esc(h.title)}</strong><small>${esc(h.neighborhood)}, ${esc(h.district)} · ${hs.rooms} oda · ${hs.curtains} perde${hs.active ? ` · <span style="color:var(--warn)">${esc(C.ST[hs.active.status].label)}</span>` : ''}</small></div></button>`; }).join('')}</div>`;
       }
       if (st.step === 2) {
         const rooms = S.rooms(st.houseId);
         return head + `<div class="split" style="grid-template-columns:minmax(0,1fr) 300px">
-          <div><div class="row between" style="margin-bottom:10px"><strong>${esc(S.house(st.houseId).title)}</strong><div class="row" style="gap:6px"><button class="btn sm ghost" id="wall">${I('check', 14)} Tümünü seç</button><button class="btn sm ghost" id="wsheer">Tül & fonlar</button><button class="btn sm ghost" id="wnone">Temizle</button></div></div>
-            ${rooms.map((r) => { const cs = S.roomCurtains(r.id); const avail = cs.filter((c) => !busy(c.id)); const allOn = avail.length && avail.every((c) => st.sel.has(c.id)); return `<div class="card" style="margin-bottom:10px"><label class="card-head" style="cursor:pointer;padding:12px 14px"><input type="checkbox" data-room="${r.id}" ${allOn ? 'checked' : ''} style="width:18px;height:18px;accent-color:var(--primary)">${UI.roomIcon(r.type, 16)}<h3 style="font-size:14px">${esc(r.name)}</h3><p>${cs.length} perde</p></label>
-              ${S.facades(r.id).map((f) => S.curtains(f.id).map((c) => { const b = busy(c.id); const on = st.sel.has(c.id); return `<div class="check-item" style="border-radius:0;border-width:1px 0 0;${b ? 'opacity:.5' : ''}"><input type="checkbox" data-cur="${c.id}" ${on ? 'checked' : ''} ${b ? 'disabled' : ''}>${Viz.swatch(c, 28)}<div style="min-width:0;flex:1"><strong style="font-size:13px">${esc(c.type)}</strong> <span class="faint" style="font-size:12px">${esc(c.code)} · ${esc(f.name)} · ${esc(c.colorName)} · ${num(C.area(c), 1)} m²</span>
-                ${on ? `<div class="chip-select" style="margin-top:6px">${Object.entries(C.SERVICES).map(([k, l]) => `<label class="chip-opt"><input type="checkbox" data-svc="${c.id}" value="${k}" ${st.sel.get(c.id).includes(k) ? 'checked' : ''}><span style="height:24px;font-size:11.5px;padding:0 9px">+ ${l}</span></label>`).join('')}</div>` : ''}${b ? `<div style="font-size:12px;color:var(--warn)">${esc(b.code)} siparişinde (${esc(C.ST[b.status].label)})</div>` : ''}</div><strong class="mono" style="font-size:13px">${money(S.washPrice(c) + (on ? sum(st.sel.get(c.id), (k) => S.prices().services[k]) : 0))}</strong></div>`; }).join('')).join('') || '<div class="card-body faint" style="font-size:13px">Bu odada perde yok.</div>'}</div>`; }).join('') || UI.empty('door', 'Bu evde oda yok', 'Önce ev sayfasından oda, cephe ve perde ekleyin.')}
-          </div><div style="position:sticky;top:0">${summary()}</div></div>`;
+          <div><div class="row between wrap" style="margin-bottom:10px;gap:8px"><div><strong>${esc(S.house(st.houseId).title)}</strong><div class="faint" style="font-size:12.5px">Mevcut perdeleri yenileme için seçin ya da cepheye yeni perde ekleyin.</div></div><div class="row" style="gap:6px"><button class="btn sm ghost" id="wall">${I('check', 14)} Tümünü seç</button><button class="btn sm ghost" id="wnone">Temizle</button></div></div>
+            ${rooms.map((r) => {
+              const cs = S.roomCurtains(r.id); const avail = cs.filter((c) => !busy(c.id)); const allOn = avail.length && avail.every((c) => st.sel.has(c.id));
+              const facs = S.facades(r.id);
+              return `<div class="card" style="margin-bottom:10px"><label class="card-head" style="cursor:pointer;padding:12px 14px"><input type="checkbox" data-room="${r.id}" ${allOn ? 'checked' : ''} ${avail.length ? '' : 'disabled'} style="width:18px;height:18px;accent-color:var(--primary)">${UI.roomIcon(r.type, 16)}<h3 style="font-size:14px">${esc(r.name)}</h3><p>${facs.length} cephe · ${cs.length} perde</p></label>
+                ${facs.map((f) => `<div class="row" style="gap:8px;padding:8px 14px;background:var(--surface-2);border-top:1px solid var(--border)">${I('window', 14, 'faint')}<span style="font-size:12.5px;font-weight:600">${esc(f.name)}</span><span class="faint" style="font-size:12px">${esc(f.opening)} · ${f.width}×${f.height} cm · ${esc(f.direction)}</span><span class="grow"></span><button class="btn sm ghost" data-addc="${f.id}">${I('plus', 13)} Perde ekle</button></div>
+                  ${S.curtains(f.id).map((c) => curtainRow(c, f)).join('')}`).join('') || `<div class="row" style="padding:10px 14px;border-top:1px solid var(--border)"><span class="faint" style="font-size:13px">Bu odada cephe yok.</span><span class="grow"></span><button class="btn sm ghost" data-addf="${r.id}">${I('plus', 13)} Cephe ekle</button></div>`}</div>`;
+            }).join('') || UI.empty('door', 'Bu evde oda yok', 'Önce ev sayfasından oda ve cephe ekleyin.')}
+          </div><div style="position:sticky;top:0" id="wsum">${summary()}</div></div>`;
       }
       const auth = S.authorized(st.houseId);
+      const pr = S.prices();
       return head + `<div class="split" style="grid-template-columns:minmax(0,1fr) 300px"><div class="form-grid">
-        <div class="form-section">Perdeler nasıl alınacak?</div>
-        <div class="field">${UI.field({ name: 'pickupMethod', type: 'radio-cards', options: [{ value: 'dukkan', label: 'Dükkana getirildi', sub: 'Şimdi teslim alıyorum', icon: 'store' }, { value: 'adres', label: 'Adresten alım', sub: `+${money(S.prices().fees.adresAlim)}`, icon: 'truck' }, { value: 'sokum', label: 'Söküm + alım', sub: `+${money(S.prices().fees.sokum)} / cephe`, icon: 'scissors' }] }, st)}</div>
-        ${st.pickupMethod === 'dukkan' ? `<label class="field"><span class="field-label">Perdeleri getiren kişi</span><select class="input" id="whanded"><option value="">— Seçin —</option>${S.members(st.houseId).map((m) => `<option value="${m.personId}" ${st.handedBy === m.personId ? 'selected' : ''}>${esc(m.person.name)} · ${esc(m.role)}</option>`).join('')}</select></label>` : `<label class="field half"><span class="field-label">Alım randevusu</span><input class="input" type="datetime-local" id="wpick" value="${st.pickupAt}"></label><div class="field half"><span class="field-label">Randevu SMS'i</span><div class="info-box" style="padding:9px 12px">${I('message', 15)}<span>${esc(S.primary(st.houseId)?.person.name || '—')} kişisine gider</span></div></div>`}
-        <div class="form-section">Nasıl teslim edilecek?</div>
-        <div class="field">${UI.field({ name: 'deliveryMethod', type: 'radio-cards', options: [{ value: 'dukkan', label: 'Dükkandan teslim', sub: 'Yetkili kişi gelip alır', icon: 'store' }, { value: 'adres', label: 'Adrese teslim', sub: `+${money(S.prices().fees.adresTeslim)}`, icon: 'truck' }, { value: 'montaj', label: 'Teslim + montaj', sub: `+${money(S.prices().fees.montaj)} / cephe`, icon: 'sparkles' }] }, st)}</div>
-        <label class="field half"><span class="field-label">Planlanan teslim</span><input class="input" type="datetime-local" id="wdue" value="${st.dueAt}"></label>
-        <div class="field half"><span class="field-label">Teslim alabilecekler (${auth.length})</span>${V.whoCan(st.houseId, 6)}</div>
-        <div class="form-section">Ödeme</div>
+        <div class="form-section">Ölçü</div>
+        <div class="field">${UI.field({ name: 'measureMethod', type: 'radio-cards', options: [{ value: 'yerinde', label: 'Yerinde ölçü', sub: pr.fees.kesif ? `Adrese gidilir · +${money(pr.fees.kesif)}` : 'Adrese gidilir · ücretsiz', icon: 'ruler' }, { value: 'musteri', label: 'Müşteri getirdi', sub: 'Direkt teklif verilir', icon: 'user' }, { value: 'kayitli', label: 'Kayıtlı ölçüler', sub: 'Cephe ölçüleri kullanılır', icon: 'layers' }] }, st)}</div>
+        ${st.measureMethod === 'yerinde' ? `<label class="field half"><span class="field-label">Ölçü randevusu</span><input class="input" type="datetime-local" id="wmeas" value="${st.measureAt}"></label>` : ''}
+        <label class="field ${st.measureMethod === 'yerinde' ? 'half' : ''}"><span class="field-label">Görüşülen kişi</span><select class="input" id="wby">${S.members(st.houseId).map((m) => `<option value="${m.personId}" ${st.orderedBy === m.personId ? 'selected' : ''}>${esc(m.person.name)} · ${esc(m.role)}</option>`).join('')}</select><small class="field-hint">${st.measureMethod === 'yerinde' ? 'Randevu SMS\'i bu kişiye gider' : 'Teklif SMS\'i bu kişiye gider'}</small></label>
+        <div class="form-section">Teslimat</div>
+        <div class="field">${UI.field({ name: 'deliveryMethod', type: 'radio-cards', options: [{ value: 'montaj', label: 'Montajlı teslim', sub: `+${money(pr.fees.montaj)} / cephe`, icon: 'sparkles' }, { value: 'dukkan', label: 'Dükkandan teslim', sub: 'Evdeki yetkili gelip alır', icon: 'store' }, { value: 'adres', label: 'Adrese teslim', sub: `+${money(pr.fees.adresTeslim)}`, icon: 'truck' }] }, st)}</div>
+        ${st.deliveryMethod === 'montaj' ? UI.field({ name: 'sokum', type: 'toggle', label: 'Eski perdeler sökülsün', hint: `+${money(pr.fees.sokum)} / cephe`, col: 'half' }, st) : ''}
+        <label class="field ${st.deliveryMethod === 'montaj' ? 'half' : 'half'}"><span class="field-label">${st.deliveryMethod === 'montaj' ? 'Planlanan montaj' : 'Planlanan teslim'}</span><input class="input" type="datetime-local" id="wdue" value="${st.dueAt}"></label>
+        <div class="field ${st.deliveryMethod === 'montaj' ? '' : 'half'}"><span class="field-label">Teslim alabilecekler (${auth.length})</span>${V.whoCan(st.houseId, 6)}</div>
+        <div class="form-section">Fiyat</div>
         <label class="field third"><span class="field-label">İndirim</span><div class="input-wrap"><input class="input" type="number" min="0" id="wdisc" value="${st.discount}"><span class="input-suffix">₺</span></div></label>
-        <label class="field third"><span class="field-label">Kapora</span><div class="input-wrap"><input class="input" type="number" min="0" id="wdep" value="${st.deposit}"><span class="input-suffix">₺</span></div></label>
-        <label class="field third"><span class="field-label">Kapora yöntemi</span><select class="input" id="wdepm">${C.PAYMENT.map((m) => `<option ${st.depositMethod === m ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
-        <label class="field"><span class="field-label">Sipariş notu</span><textarea class="input" id="wnotes" rows="2" placeholder="Leke, hassas kumaş, montaj saati…">${esc(st.notes)}</textarea></label>
+        <label class="field" style="grid-column:span 4"><span class="field-label">Not</span><textarea class="input" id="wnotes" rows="2" placeholder="Kumaş tercihi, renk kartelası, montaj saati…">${esc(st.notes)}</textarea></label>
       </div><div style="position:sticky;top:0" id="wsum">${summary()}</div></div>`;
     };
-    const busy = (cid) => { const o = S.activeOrderFor(cid); return o && (!order || o.id !== order.id) ? o : null; };
     const foot = () => {
       const first = steps[0][0], last = steps[steps.length - 1][0];
       const can = st.step === 1 ? !!st.houseId : st.step === 2 ? st.sel.size > 0 : true;
       return `<span class="faint" style="font-size:13px">${st.sel.size ? `${st.sel.size} parça · ${money(draft().total)}` : ''}</span><span class="grow"></span>
         ${st.step > first ? `<button class="btn ghost" data-w="back">${I('arrow-left', 16)} Geri</button>` : `<button class="btn ghost" data-close>Vazgeç</button>`}
-        ${st.step < last ? `<button class="btn primary" data-w="next" ${can ? '' : 'disabled'}>İleri ${I('arrow-right', 16)}</button>` : `<button class="btn primary" data-w="done" ${can ? '' : 'disabled'}>${I('check', 16)} ${order ? 'Kaydet' : 'Siparişi oluştur'}</button>`}`;
+        ${st.step < last ? `<button class="btn primary" data-w="next" ${can ? '' : 'disabled'}>İleri ${I('arrow-right', 16)}</button>` : `<button class="btn primary" data-w="done" ${can ? '' : 'disabled'}>${I('check', 16)} ${order ? 'Kaydet' : st.measureMethod === 'yerinde' ? 'Ölçü randevusu oluştur' : 'Teklif oluştur'}</button>`}`;
     };
     UI.modal({
-      title: order ? `${order.code} · perdeleri düzenle` : 'Yeni yıkama siparişi', subtitle: order ? 'Siparişe perde ekleyin veya çıkarın' : 'Ev seçin, perdeleri işaretleyin, teslimatı planlayın', icon: 'clipboard', size: 'xl',
+      title: order ? `${order.code} · perdeleri düzenle` : 'Yeni perde siparişi', subtitle: order ? 'Tekliften perde ekleyin veya çıkarın' : 'Ev seçin, perdeleri belirleyin, ölçü ve montajı planlayın', icon: 'clipboard', size: 'xl',
       body: body(), foot: foot(),
       onMount: (el, api) => {
         const re = (keepScroll = true) => { const mb = el.querySelector('.modal-body'); const y = mb.scrollTop; api.setBody(body()); api.setFoot(foot()); bind(); if (keepScroll) mb.scrollTop = y; };
@@ -448,39 +482,45 @@
           bindFoot();
           const wq = el.querySelector('#wq');
           if (wq) { wq.addEventListener('input', () => { st.q = wq.value; const pos = wq.selectionStart; re(); const n = el.querySelector('#wq'); n.focus(); n.setSelectionRange(pos, pos); }); }
-          el.querySelectorAll('[data-house]').forEach((b) => b.addEventListener('click', () => { if (st.houseId !== b.dataset.house) st.sel = new Map(); st.houseId = b.dataset.house; if (b.dataset.busy) UI.toast('Bu evin aktif bir siparişi var', 'info', 'Aktif siparişteki perdeler seçilemez.'); st.step = 2; re(false); }));
-          el.querySelectorAll('[data-cur]').forEach((cb) => cb.addEventListener('change', () => { if (cb.checked) st.sel.set(cb.dataset.cur, []); else st.sel.delete(cb.dataset.cur); re(); }));
+          el.querySelector('#wnewhouse')?.addEventListener('click', () => { api.close(); setTimeout(() => A.houseForm({}), 150); });
+          el.querySelectorAll('[data-house]').forEach((b) => b.addEventListener('click', () => {
+            if (st.houseId !== b.dataset.house) { st.sel = new Map(); st.orderedBy = S.primary(b.dataset.house)?.personId || ''; }
+            st.houseId = b.dataset.house;
+            if (b.dataset.busy) UI.toast('Bu evin aktif bir siparişi var', 'info', 'O siparişteki perdeler tekrar seçilemez.');
+            st.step = 2; re(false);
+          }));
+          el.querySelectorAll('[data-cur]').forEach((cb) => cb.addEventListener('change', () => { if (cb.checked) st.sel.set(cb.dataset.cur, suggest(S.curtain(cb.dataset.cur))); else st.sel.delete(cb.dataset.cur); re(); }));
           el.querySelectorAll('[data-svc]').forEach((cb) => cb.addEventListener('change', () => { const l = st.sel.get(cb.dataset.svc); if (cb.checked) l.push(cb.value); else l.splice(l.indexOf(cb.value), 1); re(); }));
-          el.querySelectorAll('[data-room]').forEach((cb) => cb.addEventListener('change', () => { S.roomCurtains(cb.dataset.room).filter((c) => !busy(c.id)).forEach((c) => { if (cb.checked) { if (!st.sel.has(c.id)) st.sel.set(c.id, []); } else st.sel.delete(c.id); }); re(); }));
-          el.querySelector('#wall')?.addEventListener('click', () => { S.houseCurtains(st.houseId).filter((c) => !busy(c.id)).forEach((c) => { if (!st.sel.has(c.id)) st.sel.set(c.id, []); }); re(); });
-          el.querySelector('#wsheer')?.addEventListener('click', () => { st.sel = new Map(); S.houseCurtains(st.houseId).filter((c) => !busy(c.id) && ['Tül', 'Fon', 'Kruvaze', 'Blackout'].includes(c.type)).forEach((c) => st.sel.set(c.id, [])); re(); });
+          el.querySelectorAll('[data-room]').forEach((cb) => cb.addEventListener('change', () => { S.roomCurtains(cb.dataset.room).filter((c) => !busy(c.id)).forEach((c) => { if (cb.checked) { if (!st.sel.has(c.id)) st.sel.set(c.id, suggest(c)); } else st.sel.delete(c.id); }); re(); }));
+          el.querySelectorAll('[data-addc]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); A.curtainForm({ facade: b.dataset.addc, onSaved: (nc) => { st.sel.set(nc.id, suggest(nc)); re(); } }); }));
+          el.querySelectorAll('[data-addf]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); A.facadeForm({ room: b.dataset.addf, onSaved: () => re() }); }));
+          el.querySelector('#wall')?.addEventListener('click', () => { S.houseCurtains(st.houseId).filter((c) => !busy(c.id)).forEach((c) => { if (!st.sel.has(c.id)) st.sel.set(c.id, suggest(c)); }); re(); });
           el.querySelector('#wnone')?.addEventListener('click', () => { st.sel = new Map(); re(); });
-          el.querySelectorAll('[name=pickupMethod]').forEach((r) => r.addEventListener('change', () => { st.pickupMethod = r.value; if (r.value === 'sokum' && st.deliveryMethod === 'dukkan') st.deliveryMethod = 'montaj'; re(); }));
-          el.querySelectorAll('[name=deliveryMethod]').forEach((r) => r.addEventListener('change', () => { st.deliveryMethod = r.value; updSum(); }));
+          el.querySelectorAll('[name=measureMethod]').forEach((r) => r.addEventListener('change', () => { st.measureMethod = r.value; re(); }));
+          el.querySelectorAll('[name=deliveryMethod]').forEach((r) => r.addEventListener('change', () => { st.deliveryMethod = r.value; if (r.value !== 'montaj') st.sokum = false; re(); }));
+          el.querySelector('[name=sokum]')?.addEventListener('change', (e) => { st.sokum = e.target.checked; updSum(); });
           const bindVal = (sel, key, numeric) => el.querySelector(sel)?.addEventListener('input', (e) => { st[key] = numeric ? Math.max(0, +e.target.value || 0) : e.target.value; if (numeric) updSum(); });
-          bindVal('#wpick', 'pickupAt'); bindVal('#wdue', 'dueAt'); bindVal('#wdisc', 'discount', true); bindVal('#wdep', 'deposit', true); bindVal('#wnotes', 'notes');
-          el.querySelector('#wdepm')?.addEventListener('change', (e) => { st.depositMethod = e.target.value; });
-          el.querySelector('#whanded')?.addEventListener('change', (e) => { st.handedBy = e.target.value; });
+          bindVal('#wmeas', 'measureAt'); bindVal('#wdue', 'dueAt'); bindVal('#wdisc', 'discount', true); bindVal('#wnotes', 'notes');
+          el.querySelector('#wby')?.addEventListener('change', (e) => { st.orderedBy = e.target.value; });
         };
         bind();
       },
     });
     function finish(api) {
       if (order) {
-        const d = S.buildOrderDraft({ houseId: order.houseId, items: [...st.sel].map(([curtainId, services]) => ({ curtainId, services })), pickupMethod: order.pickupMethod, deliveryMethod: order.deliveryMethod, discount: order.discount });
+        const d = draft();
         S.updateOrder(order.id, { items: d.items, fees: d.fees, total: d.total });
-        UI.toast('Sipariş güncellendi', 'ok', `${d.items.length} parça · ${money(d.total)}`);
+        UI.toast('Teklif güncellendi', 'ok', `${d.items.length} parça · ${money(d.total)}`);
         api.close(); return;
       }
       const o = S.createOrder({
-        houseId: st.houseId, items: [...st.sel].map(([curtainId, services]) => ({ curtainId, services })),
-        pickupMethod: st.pickupMethod, pickupAt: st.pickupMethod === 'dukkan' ? new Date().toISOString() : U.fromInput(st.pickupAt), handedBy: st.handedBy || null,
-        deliveryMethod: st.deliveryMethod, dueAt: U.fromInput(st.dueAt), discount: st.discount, deposit: Math.min(st.deposit, draft().total), depositMethod: st.depositMethod, notes: st.notes,
+        houseId: st.houseId, items: items(), measureMethod: st.measureMethod, measureAt: U.fromInput(st.measureAt), orderedBy: st.orderedBy || null,
+        deliveryMethod: st.deliveryMethod, sokum: st.sokum, dueAt: U.fromInput(st.dueAt), discount: st.discount, notes: st.notes,
       });
       api.close();
       UI.toast(`${o.code} oluşturuldu`, 'ok', `${o.items.length} parça · ${money(o.total)}`);
-      const prim = S.primary(o.houseId);
-      if (prim?.person.phone) setTimeout(() => UI.toast(`SMS gönderildi → ${prim.person.name}`, 'sms', o.status === 'planlandi' ? 'Alım randevusu bilgisi' : 'Perdeler teslim alındı bilgisi'), 600);
+      const to = S.person(o.orderedBy) || S.primary(o.houseId)?.person;
+      if (to?.phone) setTimeout(() => UI.toast(`SMS gönderildi → ${to.name}`, 'sms', o.status === 'olcu' ? `Ölçü randevusu: ${U.dt(o.measureAt)}` : `Teklif: ${money(o.total)}`), 600);
       location.hash = '#/siparis/' + o.id;
     }
   };
@@ -491,9 +531,33 @@
     const next = C.FLOW[C.FLOW.indexOf(o.status) + 1];
     if (!next) return;
     if (next === 'teslim') { location.hash = '#/teslimat?siparis=' + id; return; }
+    if (next === 'tedarik') { A.approveForm({ id }); return; }
     S.setStatus(id, next);
     UI.toast(`${o.code} → ${C.ST[next].label}`, 'ok');
+    if (next === 'teklif') { const to = S.person(o.orderedBy) || S.primary(o.houseId)?.person; if (to?.phone) setTimeout(() => UI.toast(`Teklif SMS'i gönderildi → ${to.name}`, 'sms', money(S.totals(o).total)), 500); }
     if (next === 'hazir') A.smsToast(o);
+  };
+  A.approveForm = ({ id }) => {
+    const o = S.order(id); const t = S.totals(o);
+    const members = S.members(o.houseId);
+    const dueDefault = new Date(Math.max(Date.now() + 10 * 864e5, new Date(o.dueAt || 0).getTime())); dueDefault.setHours(14, 0, 0, 0);
+    UI.formModal({
+      title: 'Teklif onaylandı', subtitle: `${o.code} · ${S.house(o.houseId)?.title} · ${money(t.total)}`, icon: 'check-circle',
+      fields: [
+        { name: 'personId', label: 'Onaylayan kişi', type: 'select', options: members.map((m) => ({ value: m.personId, label: `${m.person.name} · ${m.role}` })) },
+        { name: 'deposit', label: 'Kapora', type: 'number', suffix: '₺', min: 0, col: 'half', hint: `Toplamın %${Math.round((Math.round(t.total * 0.4 / 100) * 100 / Math.max(1, t.total)) * 100)}'ı önerildi` },
+        { name: 'dueAt', label: o.deliveryMethod === 'montaj' ? 'Planlanan montaj' : 'Planlanan teslim', type: 'datetime-local', col: 'half' },
+        { name: 'method', label: 'Kapora ödeme yöntemi', type: 'radio-cards', options: C.PAYMENT.map((m) => ({ value: m, label: m })) },
+      ],
+      values: { personId: o.orderedBy || S.primary(o.houseId)?.personId, deposit: Math.max(0, Math.round(t.total * 0.4 / 100) * 100 - t.paid), method: 'Nakit', dueAt: U.toLocalInput(dueDefault.toISOString()) },
+      submit: 'Onayla, kumaşı sipariş et',
+      onSubmit: (v) => {
+        S.approve(id, { personId: v.personId, deposit: Math.min(Math.max(0, v.deposit || 0), t.balance), method: v.method || 'Nakit', dueAt: U.fromInput(v.dueAt) });
+        UI.toast(`${o.code} onaylandı`, 'ok', v.deposit > 0 ? `${money(v.deposit)} kapora alındı · kumaş tedarikte` : 'Kumaş tedarikte');
+        const prim = S.primary(o.houseId);
+        if (prim?.person.phone) setTimeout(() => UI.toast(`SMS gönderildi → ${prim.person.name}`, 'sms', 'Sipariş onayı ve tahmini teslim tarihi'), 600);
+      },
+    });
   };
   A.smsToast = (o) => {
     const auth = S.authorized(o.houseId);
@@ -533,9 +597,9 @@
 
   A.smsForm = ({ person } = {}) => {
     const templates = [
-      ['Hatırlatma', 'Sayın {ad}, perdeleriniz dükkanımızda sizi bekliyor. {imza}'],
-      ['Sezon kampanyası', 'Sayın {ad}, bahar temizliği için perde yıkamada %10 indirim! Randevu: {tel} {imza}'],
-      ['Randevu teyidi', 'Sayın {ad}, yarın perde alımı için adresinize geleceğiz. Uygun değilse lütfen bizi arayın: {tel} {imza}'],
+      ['Hatırlatma', 'Sayın {ad}, perdeleriniz hazır ve dükkanımızda sizi bekliyor. {imza}'],
+      ['Kampanya', 'Sayın {ad}, yeni sezon kumaşlarımız geldi! Tül ve fonlarda %10 indirim, ücretsiz ölçü için: {tel} {imza}'],
+      ['Randevu teyidi', 'Sayın {ad}, yarın ölçü almak için adresinize geleceğiz. Uygun değilse lütfen bizi arayın: {tel} {imza}'],
     ];
     const people = S.people().filter((p) => p.phone).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
     UI.formModal({
@@ -564,25 +628,29 @@
   };
   A.printLabel = ({ id }) => {
     const c = S.curtain(id);
-    UI.modal({ title: 'Atölye etiketi', subtitle: `${c.code} · ${c.type}`, icon: 'barcode', size: 'sm', body: `<div style="display:flex;justify-content:center">${V.label(c)}</div><p class="faint" style="font-size:12.5px;margin-top:12px;text-align:center">Etiket perdenin kenarına dikilir, yıkama boyunca perdeyle birlikte dolaşır.</p>`,
+    UI.modal({ title: 'Ürün etiketi', subtitle: `${c.code} · ${c.type}`, icon: 'barcode', size: 'sm', body: `<div style="display:flex;justify-content:center">${V.label(c)}</div><p class="faint" style="font-size:12.5px;margin-top:12px;text-align:center">Etiket perdenin iç kenarına dikilir; dikimden montaja kadar perdeyle birlikte dolaşır, garantide perdeyi tanımlar.</p>`,
       foot: `<button class="btn ghost" data-close>Kapat</button><button class="btn primary" data-p>${I('printer', 16)} Yazdır</button>`,
       onMount: (el) => el.querySelector('[data-p]').addEventListener('click', () => A.printHtml(c.code, V.label(c))) });
   };
   A.printReceipt = ({ id }) => {
     const o = S.order(id); const t = S.totals(o); const shop = S.shop(); const h = S.house(o.houseId);
-    A.printHtml(o.code, `<h1>${esc(shop.name)}</h1><div class="muted">${esc(shop.address)} · ${esc(shop.phone)}</div><hr>
-      <p><strong>Sipariş:</strong> ${esc(o.code)} &nbsp; <strong>Tarih:</strong> ${U.dt(o.createdAt)}<br><strong>Müşteri:</strong> ${esc(h?.title)} — ${esc(h?.street)} ${esc(h?.unit)}, ${esc(h?.district)}<br><strong>Durum:</strong> ${esc(C.ST[o.status].label)}${o.deliveredToName ? ` · Teslim alan: ${esc(o.deliveredToName)} (${U.dt(o.deliveredAt)})` : ''}</p>
-      <table><thead><tr><th>Perde</th><th>Konum</th><th class="r">m²</th><th class="r">Ücret</th></tr></thead><tbody>${o.items.map((it) => { const p = S.path(it.curtainId); return `<tr><td>${esc(p.curtain?.code)} · ${esc(p.curtain?.type)} · ${esc(p.curtain?.colorName)}${it.services.length ? '<br><span class="muted">+ ' + it.services.map((s) => esc(C.SERVICES[s])).join(', ') + '</span>' : ''}</td><td>${esc(p.room?.name)} / ${esc(p.facade?.name)}</td><td class="r">${p.curtain ? num(C.area(p.curtain), 1) : '—'}</td><td class="r">${money(it.price)}</td></tr>`; }).join('')}
+    const isQuote = ['olcu', 'teklif'].includes(o.status);
+    const who = S.person(o.orderedBy);
+    A.printHtml(o.code, `<h1>${esc(shop.name)}</h1><div class="muted">${esc(shop.address)} · ${esc(shop.phone)} · Vergi no ${esc(shop.taxNo || '')}</div><hr>
+      <h1 style="font-size:15px;letter-spacing:.08em">${isQuote ? 'FİYAT TEKLİFİ' : 'SATIŞ FİŞİ'}</h1>
+      <p><strong>No:</strong> ${esc(o.code)} &nbsp; <strong>Tarih:</strong> ${U.dt(o.createdAt)}<br><strong>Müşteri:</strong> ${esc(h?.title)}${who ? ' (' + esc(who.name) + ')' : ''} — ${esc(h?.street)} ${esc(h?.unit)}, ${esc(h?.district)}<br><strong>Teslimat:</strong> ${esc(C.DELIVERY[o.deliveryMethod])}${o.sokum ? ' · eski perde sökümü' : ''} · plan ${U.date(o.dueAt)}<br><strong>Durum:</strong> ${esc(C.ST[o.status].label)}${o.deliveredToName ? ` · Teslim alan: ${esc(o.deliveredToName)} (${U.dt(o.deliveredAt)})` : ''}</p>
+      <table><thead><tr><th>Perde</th><th>Konum</th><th>Ölçü</th><th class="r">Tutar</th></tr></thead><tbody>${o.items.map((it) => { const p = S.path(it.curtainId); const c = p.curtain; return `<tr><td>${esc(c?.code)} · ${esc(c?.type)} · ${esc(c?.fabric)} · ${esc(c?.colorName)}${it.services.length ? '<br><span class="muted">+ ' + it.services.map((s) => esc(C.SERVICES[s])).join(', ') + '</span>' : ''}</td><td>${esc(p.room?.name)} / ${esc(p.facade?.name)}</td><td>${c ? `${c.width}×${c.height} cm${C.CURTAIN_TYPES[c.type].flat ? '' : ` · ${num(C.fabricMeters(c), 1)} m kumaş`}` : '—'}</td><td class="r">${money(it.price)}</td></tr>`; }).join('')}
       ${(o.fees || []).map((f) => `<tr><td colspan="3">${esc(f.label)}</td><td class="r">${money(f.amount)}</td></tr>`).join('')}${t.discount ? `<tr><td colspan="3">İndirim</td><td class="r">−${money(t.discount)}</td></tr>` : ''}
-      <tr class="tot"><td colspan="3">Toplam</td><td class="r">${money(t.total)}</td></tr><tr><td colspan="3">Ödenen</td><td class="r">${money(t.paid)}</td></tr><tr class="tot"><td colspan="3">Kalan</td><td class="r">${money(t.balance)}</td></tr></tbody></table>
+      <tr class="tot"><td colspan="3">Toplam (KDV dahil)</td><td class="r">${money(t.total)}</td></tr>${isQuote ? '' : `<tr><td colspan="3">Ödenen</td><td class="r">${money(t.paid)}</td></tr><tr class="tot"><td colspan="3">Kalan</td><td class="r">${money(t.balance)}</td></tr>`}</tbody></table>
+      ${isQuote ? '<p class="muted" style="margin-top:16px">Teklif 15 gün geçerlidir. Onayda toplam tutarın %40\'ı kapora olarak alınır. Ölçüler montaj öncesi yerinde kontrol edilir.</p>' : `<p class="muted" style="margin-top:16px">Perdeler ${shop.warrantyYears || 2} yıl dikiş ve mekanizma garantilidir.</p>`}
       ${o.signature ? `<p style="margin-top:16px"><strong>Teslim alan imzası:</strong><br><img src="${o.signature}" style="max-width:260px;max-height:110px"></p>` : ''}<p class="muted" style="margin-top:24px">Bizi tercih ettiğiniz için teşekkür ederiz.</p>`);
   };
 
   /* ---------- Veri ---------- */
   A.exportJson = () => { U.download(`perdeci-yedek-${U.toDateInput()}.json`, S.exportJson()); UI.toast('Yedek indirildi', 'ok'); };
   A.exportCsv = () => {
-    const rows = [['Sipariş', 'Ev', 'İlçe', 'Durum', 'Alım', 'Teslim', 'Teslim alan', 'Parça', 'Toplam', 'Ödenen', 'Bakiye']];
-    S.orders().forEach((o) => { const t = S.totals(o); const h = S.house(o.houseId); rows.push([o.code, h?.title, h?.district, C.ST[o.status].label, U.date(o.pickupAt), o.deliveredAt ? U.date(o.deliveredAt) : '', o.deliveredToName || '', o.items.length, t.total, t.paid, t.balance]); });
+    const rows = [['Sipariş', 'Ev', 'İlçe', 'Durum', 'Tarih', 'Teslim', 'Teslim alan', 'Parça', 'Toplam', 'Ödenen', 'Bakiye']];
+    S.orders().forEach((o) => { const t = S.totals(o); const h = S.house(o.houseId); rows.push([o.code, h?.title, h?.district, C.ST[o.status].label, U.date(o.createdAt), o.deliveredAt ? U.date(o.deliveredAt) : '', o.deliveredToName || '', o.items.length, t.total, t.paid, t.balance]); });
     U.download(`perdeci-siparisler-${U.toDateInput()}.csv`, '﻿' + rows.map((r) => r.map((x) => `"${String(x ?? '').replace(/"/g, '""')}"`).join(';')).join('\n'), 'text/csv;charset=utf-8');
     UI.toast('CSV indirildi', 'ok');
   };
